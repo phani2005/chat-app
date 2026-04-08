@@ -264,18 +264,25 @@ async function sendCallNotification({ toUsers, title, body, data }) {
 
         const subs = await Subscription.find({ email: user })
 
-        subs.forEach(s => {
-            webpush.sendNotification(
-                s.sub,
-                JSON.stringify({
-                    title,
-                    body,
-                    ...data
-                })
-            ).catch(err => {
+        for (let s of subs) {
+            try {
+                await webpush.sendNotification(
+                    s.sub,
+                    JSON.stringify({
+                        title,
+                        body,
+                        ...data
+                    })
+                )
+            } catch (err) {
                 console.log("❌ Push error:", err.message)
-            })
-        })
+                // 🔥 Delete stale/expired subscription
+                if (err.statusCode === 410 || err.statusCode === 404 || err.statusCode === 201) {
+                    await Subscription.deleteOne({ _id: s._id })
+                    console.log("🗑️ Deleted stale subscription:", s._id)
+                }
+            }
+        }
     }
 }
 app.post("/login", async (req, res) => {
