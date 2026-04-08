@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+        <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="theme-color" content="#075E54">
+<link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+
+<div class="container">
+<h2>Change DP</h2>
+
+<form action="/changedp" method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="email" id="email">
+    <input type="file" name="photo" required>
+    <button type="submit">Update</button>
+</form>
+</div>
+
+<script>
+document.getElementById("email").value =
+    localStorage.getItem("loggedUser")
+</script>
+
+</body>
+</html>

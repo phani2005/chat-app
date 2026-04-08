@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#075E54">
+    <title>Login</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+
+<div class="container">
+    <h2>Login</h2>
+
+    <form action="/login" method="POST" id="loginForm">
+
+        <input type="email" name="email" placeholder="Enter email" required>
+
+        <input type="password" name="password" placeholder="Enter password" required>
+
+        <button type="submit">Login</button>
+
+        <a href="/newpassword.html">Forgot Password?</a>
+        <a href="/register.html">Sign Up</a>
+
+    </form>
+</div>
+    <script>
+document.getElementById("loginForm").addEventListener("submit", async function(e){
+
+    e.preventDefault()
+
+    try {
+
+        const email = this.email.value
+        const password = this.password.value
+
+        const res = await fetch("/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ email, password }),
+            credentials:"include"
+        })
+
+        const data = await res.json()
+
+        if (data.success) {
+            localStorage.setItem("loggedUser", data.email)
+            window.location.href = "/main.html"
+        } else {
+            alert(data.message)
+        }
+
+    } catch (err) {
+        alert("Server error, try again")
+        console.log(err)
+    }
+})
+</script>
+</body>
+</html>

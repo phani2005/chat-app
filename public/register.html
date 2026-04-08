@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#075E54">
+    <title>Register</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+
+<div class="container">
+    <h2>Create Account</h2>
+
+    <form action="/register" method="POST" enctype="multipart/form-data">
+
+        <input type="text" name="username" placeholder="Username" required>
+
+        <input type="email" name="email" placeholder="Email" required>
+
+        <input type="password" name="password" placeholder="Password" required>
+
+        <input type="file" name="photo">
+
+        <button type="submit">Register</button>
+
+        <a href="/login.html">Already have an account? Login</a>
+
+    </form>
+</div>
+     <script>
+document.querySelector("form").addEventListener("submit", async function(e){
+
+    e.preventDefault()
+
+    const formData = new FormData(this)
+
+    const email = formData.get("email")
+
+    // ✅ Gmail validation
+    const gmailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/
+
+    if (!gmailRegex.test(email)) {
+        alert("Please enter a valid Gmail address (example@gmail.com)")
+        return
+    }
+
+    try {
+
+        const res = await fetch("/register", {
+            method: "POST",
+            body: formData
+        })
+
+        const data = await res.json()
+
+        if (data.success) {
+            window.location.href = "/login.html"
+        } else {
+            alert(data.message)
+        }
+
+    } catch (err) {
+        alert("Server error")
+        console.log(err)
+    }
+})
+</script>
+</body>
+   
+</html>

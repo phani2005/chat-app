@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#075E54">
+    <title>Chat Page</title>
+    <link rel="stylesheet" href="chat.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="left-side" id="contactInfoBtn">
+                <i class="fa-solid fa-arrow-left" id="back_button"></i>
+                <img src="/profilephotodefault.png" class="chat-dp">
+                <div class="contact-info">
+                    <strong id="chatName">Sample Name</strong>
+                    <div class="timestamp">online</div>
+                </div>
+            </div>
+
+            <div class="right-side">
+                <i class="fa-solid fa-phone"></i>
+                <i class="fa-solid fa-video"></i>
+                <div class="menu-wrapper">
+                    <i class="fa-solid fa-ellipsis-vertical" id="menuBtn"></i>
+
+                    <div class="dropdown-menu" id="dropdownMenu">
+                        <div id="selectOption">Select</div>
+                        <div id="addContactOption">Add Contact</div>
+                        <div id="clearOption">Clear Chat</div>
+                        <!-- <div id="blockOption">Block</div> -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="selectBar" style="display:none;" class="select-bar">
+            <button id="deleteForMeBtn" class="danger-btn">Delete For Me</button>
+            <button id="deleteForEveryoneBtn" class="danger-btn">Delete For Everyone</button>
+            <button id="cancelSelect" class="cancel-btn">Cancel</button>
+        </div>
+        <!-- Chat Messages -->
+        <div class="chat-body" id="chatBody">
+
+            <!-- <div class="message received">
+            </div>
+
+            <div class="message sent">
+            </div> -->
+
+        </div>
+        <div id="replyPreview" style="display:none; background:#eee; padding:8px;">
+            <span id="replyText"></span>
+            <button onclick="cancelReply()">❌</button>
+        </div>
+        <!-- Message Input -->
+        <div class="chat-input">
+            <i class="fa-regular fa-face-smile" id="emojiBtn"></i>
+            <div class="emoji-container">
+                <emoji-picker id="emojiPicker"></emoji-picker>
+            </div>
+            <!-- <emoji-picker id="emojiPicker" style="display:none;"></emoji-picker> -->
+            <input type="text" placeholder="Type a message" id="messageInput">
+
+            <input type="file" id="fileInput" hidden>
+            <i class="fa-solid fa-paperclip" id="attachBtn"></i>
+            <button id="sendBtn">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+
+    </div>
+    <div id="callModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:black;">
+        <video id="localVideo" autoplay muted style="width:45%;"></video>
+        <video id="remoteVideo" autoplay style="width:45%;"></video>
+        <button onclick="endCall()">End Call</button>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js" type="module"></script>
+    <script>
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/service-worker.js")
+        }
+        const input = document.getElementById("messageInput")
+        const attachBtn = document.getElementById("attachBtn")
+        const fileInput = document.getElementById("fileInput")
+        let selectMode = false
+        let selectedMessages = new Set()
+        let replyingMessage = null
+
+        attachBtn.addEventListener("click", () => {
+            fileInput.click()
+        })
+        const emojiBtn = document.getElementById("emojiBtn")
+        const emojiPicker = document.getElementById("emojiPicker")
+        const menuBtn = document.getElementById("menuBtn")
+        const dropdownMenu = document.getElementById("dropdownMenu")
+        // const isGroup = localStorage.getItem("isGroup") === "true"
+        let contactNames = {}
+        async function requestPermission() {
+            const permission = await Notification.requestPermission()
+            console.log("Permission:", permission)
+        }
+
+        // requestPermission()
+
+        menuBtn.addEventListener("click", () => {
+            dropdownMenu.style.display =
+                dropdownMenu.style.display === "block"
+                    ? "none"
+                    : "block"
+        })
+        document.addEventListener("click", (e) => {
+
+            const isClickInsideMenu = dropdownMenu.contains(e.target)
+            const isClickOnButton = menuBtn.contains(e.target)
+
+            if (!isClickInsideMenu && !isClickOnButton) {
+                dropdownMenu.style.display = "none"
+            }
+        })
+        let peerConnection
+        let localStream
+
+        const servers = {
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                {
+                    urls: "turn:openrelay.metered.ca:80",
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                },
+                {
+                    urls: "turn:openrelay.metered.ca:443",
+                    username: "openrelayproject",
+                    credential: "openrelayproject"
+                }
+            ]
+        }
+        function startReply(msgObj) {
+            replyingMessage = msgObj
+
+            document.getElementById("replyPreview").style.display = "block"
+            document.getElementById("replyText").innerText =
+                (msgObj.from === loggedUser ? "You: " : "") +
+                (msgObj.message || "File")
+        }
+
+        function cancelReply() {
+            replyingMessage = null
+            document.getElementById("replyPreview").style.display = "none"
+        }
+        document.querySelector(".fa-phone").addEventListener("click", () => {
+            localStorage.setItem("callType", "caller")
+            if (isGroup) {
+                window.location.href = "/groupvoicecall.html"
+            } else {
+                window.location.href = "/voicechat.html"
+            }
+        })
+        document.querySelector(".fa-video").addEventListener("click", () => {
+            localStorage.setItem("callType", "caller")
+            if (isGroup) {
+                window.location.href = "/groupvideocall.html"
+            } else {
+                window.location.href = "/videocall.html"
+            }
+        })
+        // document.getElementById("addContactOption").addEventListener("click", () => {
+        //     localStorage.setItem("pendingContactEmail", receiverEmail)
+        //     window.location.href = "/newcontact.html"
+        // })
+        document.getElementById("addContactOption").addEventListener("click", () => {
+
+            const optionText = document.getElementById("addContactOption").innerText
+
+            localStorage.setItem("pendingContactEmail", receiverEmail)
+
+            if (optionText === "Add Contact") {
+                window.location.href = "/newcontact.html"
+            } else {
+                window.location.href = "/changename.html"
+            }
+        })
+        document.getElementById("contactInfoBtn").addEventListener("click", () => {
+
+            // Store required details in localStorage
+            localStorage.setItem("infoEmail", receiverEmail)
+            localStorage.setItem("infoName", document.getElementById("chatName").innerText)
+            localStorage.setItem("infoDp", document.querySelector(".chat-dp").src)
+
+            window.location.href = "/contactinfo.html"
+        })
+        // emojiBtn.addEventListener("click", () => {
+        //     // emojiPicker.style.display =
+        //     //     emojiPicker.style.display === "none" ? "block" : "none"
+
+        // })
+        const emojiContainer = document.querySelector(".emoji-container")
+
+        emojiBtn.addEventListener("click", () => {
+            if (emojiContainer.style.display === "block") {
+                emojiContainer.style.display = "none"
+            } else {
+                emojiContainer.style.display = "block"
+                input.focus()
+            }
+        })
+        const urlParams = new URLSearchParams(window.location.search)
+
+        const fromParam = urlParams.get("from")
+        const nameParam = urlParams.get("name")
+        const isGroupParam = urlParams.get("isGroup") === "true"
+        const openChat = urlParams.get("openChat") === "true"
+
+        // ✅ ONLY FOR NOTIFICATION CLICK
+        if (fromParam && openChat) {
+
+            console.log("🔥 Opening correct chat from notification:", fromParam)
+            // 🔥 CLEAR UNREAD COUNT WHEN OPENED FROM NOTIFICATION
+            const key = "unread_" + fromParam
+            localStorage.removeItem(key)
+
+            // ✅ FORCE UPDATE
+            localStorage.setItem("chatWith", fromParam)
+            localStorage.setItem("isGroup", isGroupParam)
+
+            if (nameParam) {
+                localStorage.setItem("chatName", nameParam)
+            }
+            // 🔥 FORCE RELOAD (IMPORTANT)
+            const cleanUrl = `/chat.html?from=${fromParam}&isGroup=${isGroupParam}`
+
+            window.history.replaceState({}, "", cleanUrl)
+        }
+        let isGroup = false
+
+        if (fromParam && openChat) {
+            isGroup = isGroupParam
+        } else {
+            isGroup = localStorage.getItem("isGroup") === "true"
+        }
+        const isCallOpen = urlParams.get("call") === "true"
+        const receiverEmail = localStorage.getItem("chatWith")
+        console.log("✅ FINAL RECEIVER:", receiverEmail)
+
+        emojiPicker.addEventListener("emoji-click", event => {
+            input.value += event.detail.unicode
+        })
+        fileInput.addEventListener("change", async () => {
+
+            const file = fileInput.files[0]
+            if (!file) return
+
+            let type = "file"
+
+            if (file.type.startsWith("image")) type = "image"
+            else if (file.type.startsWith("video")) type = "video"
+            else if (file.type.startsWith("audio")) type = "audio"
+
+            /* ---- SHOW TEMP MESSAGE ---- */
+
+            const tempMsg = document.createElement("div")
+            tempMsg.className = "message sent"
+
+            if (type === "video") {
+                tempMsg.innerHTML = `
+        <div style="padding:10px;">
+            📹 Sending video...
+        </div>
+        `
+            } else if (type === "image") {
+                tempMsg.innerHTML = `
+        <div style="padding:10px;">
+            🖼 Sending image...
+        </div>
+        `
+            } else {
+                tempMsg.innerHTML = `
+        <div style="padding:10px;">
+            📎 Uploading file...
+        </div>
+        `
+            }
+
+            chatBody.appendChild(tempMsg)
+            chatBody.scrollTop = chatBody.scrollHeight
+
+
+            /* ---- UPLOAD FILE ---- */
+
+            const formData = new FormData()
+            formData.append("file", file)
+            formData.append("from", loggedUser)
+            formData.append("to", receiverEmail)
+            formData.append("type", type)
+            formData.append("isGroup", isGroup)
+            formData.append("originalName", file.name)
+
+            const res = await fetch("/upload-message", {
+                method: "POST",
+                body: formData
+            })
+
+            if (!res.ok) {
+                const text = await res.text()
+                console.error("Upload failed:", text)
+                alert("File upload failed")
+                return
+            }
+
+            const msgObj = await res.json()
+
+            /* ---- REMOVE TEMP MESSAGE ---- */
+
+            tempMsg.remove()
+
+            /* ---- SHOW REAL MESSAGE ---- */
+
+            // addMessage(msgObj, "sent")
+
+            chatBody.scrollTop = chatBody.scrollHeight
+
+            fileInput.value = ""
+        })
+
+        document.getElementById("back_button").addEventListener("click", (e) => {
+            e.stopPropagation()
+            window.location.href = "/main.html"
+        })
+        // const socket = io()
+        // const socket = io(window.location.origin, {
+        //     transports: ["websocket"]
+        // })
+        const socket = io(window.location.origin, {
+    transports: ["polling", "websocket"], // 🔥 allow fallback
+    withCredentials: true
+})
+        const loggedUser = localStorage.getItem("loggedUser")
+        console.log("Logged user:", loggedUser)
+        console.log("Receiver:", receiverEmail)
+
+        if (loggedUser) {
+            socket.emit("register-user", loggedUser)
+            socket.emit("join-chat", {
+                user: loggedUser,
+                chatId: receiverEmail,
+                isGroup: isGroup
+            })
+
+        }
+        let isActive = true
+
+        window.addEventListener("focus", () => {
+            isActive = true
+            socket.emit("user-active", loggedUser)
+        })
+
+        window.addEventListener("blur", () => {
+            isActive = false
+            socket.emit("user-inactive", loggedUser)
+        })
+        window.addEventListener("beforeunload", () => {
+            socket.emit("leave-chat", loggedUser)
+        })
+        // loadContacts()
+        initChat()
+        // const urlParams = new URLSearchParams(window.location.search)
+        // const fromParam = urlParams.get("from")
+        // const nameParam = urlParams.get("name")
+
+        // if (fromParam) {
+        //     localStorage.setItem("chatWith", fromParam)
+
+        //     if (nameParam) {
+        //         localStorage.setItem("chatName", nameParam)
+        //     }
+        // }
+
+
+        // Load receiver info
+        // document.getElementById("chatName").innerText =
+        //     localStorage.getItem("chatName")
+
+        // const dp = localStorage.getItem("chatDp")
+        // document.querySelector(".chat-dp").src =
+        //     dp ? dp : "/profilephotodefault.png"
+
+        const sendBtn = document.getElementById("sendBtn")
+        const chatBody = document.getElementById("chatBody")
+        async function initChat() {
+
+            await loadContacts()     // wait until contacts are loaded
+
+            await loadOldMessages()  // then load messages
+
+        }
+        if (isCallOpen) {
+
+            setTimeout(async () => {
+
+                const res = await fetch(`/get-pending-call/${loggedUser}`)
+                const data = await res.json()
+
+                console.log("📞 Pending call:", data)
+
+                if (data.exists) {
+
+                    localStorage.setItem("incomingOffer", JSON.stringify(data.offer))
+                    localStorage.setItem("incomingFrom", data.from)
+                    localStorage.setItem("callType", "receiver")
+
+                    window.location.href =
+                        data.type === "video"
+                            ? "/videocall.html"
+                            : "/voicechat.html"
+                }
+
+            }, 1000)
+
+        }
+
+        // 🔥 LOAD OLD MESSAGES WHEN PAGE OPENS
+        async function loadOldMessages() {
+
+            const res = await fetch(`/messages/${loggedUser}/${receiverEmail}?isGroup=${isGroup}`)
+            console.log("🔥 Loading messages:", {
+                receiverEmail,
+                isGroup
+            })
+
+            const data = await res.json()
+
+            const messages = data.messages || []
+            if (!isGroup) {
+                socket.emit("mark-seen", {
+                    from: receiverEmail,
+                    to: loggedUser
+                })
+            } else {
+                socket.emit("group-seen", {
+                    groupId: receiverEmail,
+                    user: loggedUser
+                })
+            }
+
+            document.getElementById("chatName").innerText =
+                data.displayName || receiverEmail
+            const addOption = document.getElementById("addContactOption")
+
+            // if (data.displayName === receiverEmail) {
+            //     // Contact NOT saved
+            //     addOption.innerText = "Add Contact"
+            // } else {
+            //     // Contact saved
+            //     addOption.innerText = "Change Name"
+            // }
+            if (!data.isSavedContact && !isGroup) {
+                addOption.innerText = "Add Contact"
+            } else if (!isGroup) {
+                addOption.innerText = "Change Name"
+            } else {
+                addOption.style.display = "none"  // hide for groups
+            }
+
+            // document.querySelector(".chat-dp").src =
+            //     data.profileimage
+            //         ? "/" + data.profileimage
+            //         : "uploads/profilephotodefault.png"
+            if (data.profileimage) {
+                document.querySelector(".chat-dp").src = data.profileimage
+            } else if (isGroup) {
+                document.querySelector(".chat-dp").src = "/groupdefault.png"
+            } else {
+                document.querySelector(".chat-dp").src = "/profilephotodefault.png"
+            }
+
+            chatBody.innerHTML = ""
+
+            messages.forEach(msg => {
+                if (msg.from === loggedUser) {
+                    addMessage(msg, "sent")
+                } else {
+                    addMessage(msg, "received")
+                }
+            })
+
+            chatBody.scrollTop = chatBody.scrollHeight
+        }
+
+        // Call it immediately
+        // loadOldMessages()
+
+        sendBtn.addEventListener("click", sendMessage)
+
+        input.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                sendMessage()
+            }
+        })
+        document.getElementById("cancelSelect").addEventListener("click", () => {
+            selectMode = false
+            selectedMessages.clear()
+            document.querySelectorAll(".msg-checkbox").forEach(cb => cb.remove())
+        })
+        document.getElementById("deleteForMeBtn").addEventListener("click", async () => {
+
+            if (selectedMessages.size === 0) return alert("No messages selected")
+
+            await fetch("/delete-messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messageIds: Array.from(selectedMessages),
+                    userEmail: loggedUser
+                })
+            })
+
+            location.reload()
+        })
+        document.getElementById("deleteForEveryoneBtn").addEventListener("click", async () => {
+
+            if (selectedMessages.size === 0) return alert("No messages selected")
+
+            const selectedIds = Array.from(selectedMessages)
+
+            // 🔥 GET ONLY MY MESSAGES
+            const myMessages = selectedIds.filter(id => {
+                const msg = document.querySelector(`.message[data-id="${id}"]`)
+                return msg && msg.classList.contains("sent")
+            })
+
+            // 🔥 IF NO OWN MESSAGE → FALLBACK TO DELETE FOR ME
+            if (myMessages.length === 0) {
+                await fetch("/delete-messages", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        messageIds: selectedIds,
+                        userEmail: loggedUser
+                    })
+                })
+
+                location.reload()
+                return
+            }
+
+            // 🔥 DELETE ONLY OWN MESSAGES FOR EVERYONE
+            await fetch("/delete-for-everyone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messageIds: myMessages,
+                    userEmail: loggedUser
+                })
+            })
+
+            // ✅ Replace message text visually
+            myMessages.forEach(id => {
+                const msg = document.querySelector(`.message[data-id="${id}"]`)
+                if (msg) {
+                    msg.innerHTML = `
+            This message was deleted
+            <span class="time"></span>
+        `
+                }
+            })
+
+            exitSelectMode()
+        })
+        async function loadContacts() {
+
+            const res = await fetch(`/getcontacts/${loggedUser}`)
+            const contacts = await res.json()
+
+            contacts.forEach(c => {
+                contactNames[c.email] = c.name
+            })
+
+        }
+        socket.on("message-deleted", ({ messageId }) => {
+
+            const msg = document.querySelector(`.message[data-id="${messageId}"]`)
+
+            if (msg) {
+                msg.innerHTML = `
+            This message was deleted
+            <span class="time"></span>
+        `
+            }
+        })
+        function exitSelectMode() {
+            selectMode = false
+            selectedMessages.clear()
+            document.querySelectorAll(".msg-checkbox").forEach(cb => cb.remove())
+            document.getElementById("selectBar").style.display = "none"
+            dropdownMenu.style.display = "none"
+        }
+        document.getElementById("clearOption").addEventListener("click", async () => {
+            await fetch("/clear-chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user1: loggedUser,
+                    user2: receiverEmail
+                })
+            })
+
+            location.reload()
+        })
+        // document.getElementById("blockOption").addEventListener("click", async () => {
+        //     const res = await fetch("/toggle-block", {
+        //         method: "POST",
+        //         headers: { "Content-Type": "application/json" },
+        //         body: JSON.stringify({
+        //             userEmail: loggedUser,
+        //             targetEmail: receiverEmail
+        //         })
+        //     })
+
+        //     const data = await res.json()
+
+        //     alert(data.blocked ? "User Blocked" : "User Unblocked")
+        // })
+        function downloadFile(url, filename) {
+
+            fetch(url)
+                .then(async res => {
+
+                    if (!res.ok) {
+                        throw new Error("File fetch failed")
+                    }
+
+                    const blob = await res.blob()
+
+                    const blobUrl = window.URL.createObjectURL(blob)
+
+                    const a = document.createElement("a")
+                    a.href = blobUrl
+                    a.download = filename
+
+                    document.body.appendChild(a)
+                    a.click()
+
+                    a.remove()
+                    window.URL.revokeObjectURL(blobUrl)
+                })
+                .catch(err => {
+                    console.error("Download error:", err)
+                    alert("Download failed")
+                })
+        }
+        function handleFileClick(url, fileName) {
+
+            const ext = fileName.split(".").pop().toLowerCase()
+
+            // 🔥 ALWAYS FIX CLOUDINARY PATH
+            if (url.includes("/image/upload/")) {
+                url = url.replace("/image/upload/", "/raw/upload/")
+            }
+
+            // ✅ DIRECT DOWNLOAD (BEST FOR ALL FILES)
+            const a = document.createElement("a")
+            a.href = url
+            a.download = fileName
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+        }
+        function sendMessage() {
+
+            const text = input.value.trim()
+            if (!text) return
+
+            const payload = {
+                to: receiverEmail,
+                from: loggedUser,
+                message: text,
+                replyTo: replyingMessage
+                    ? {
+                        messageId: replyingMessage._id,
+                        text:
+                            replyingMessage.type === "text"
+                                ? replyingMessage.message
+                                : replyingMessage.originalName || replyingMessage.type.toUpperCase(),
+                        from: replyingMessage.from
+                    }
+                    : null
+            }
+
+            if (isGroup) {
+                socket.emit("group-message", {
+                    groupId: receiverEmail,
+                    ...payload
+                })
+            } else {
+                socket.emit("private-message", payload)
+            }
+
+            input.value = ""
+            cancelReply()
+            chatBody.scrollTop = chatBody.scrollHeight
+        }
+
+        // chatBody.scrollTop = chatBody.scrollHeight
+
+        socket.on("receive-message", (msgObj) => {
+
+            console.log("Received message:", msgObj)
+
+            // ignore messages from other chats
+            // if (
+            //     msgObj.from !== receiverEmail &&
+            //     msgObj.to !== receiverEmail &&
+            //     !msgObj.isGroup
+            // ) {
+            //     return
+            // }
+            // maybe you need to chane the code here
+            // 🔥 PREVENT DUPLICATE (CRITICAL FIX)
+            if (document.querySelector(`[data-id="${msgObj._id}"]`)) {
+                return
+            }
+            if (msgObj.isGroup) {
+
+                if (msgObj.groupId !== receiverEmail) {
+                    return
+                }
+
+            } else {
+
+                if (
+                    msgObj.from !== receiverEmail &&
+                    msgObj.to !== receiverEmail
+                ) {
+                    return
+                }
+
+            }
+
+            if (msgObj.from === loggedUser) {
+                addMessage(msgObj, "sent")
+            } else {
+                addMessage(msgObj, "received")
+
+                if (msgObj.isGroup) {
+                    // 🔥 ADD THIS
+                    socket.emit("group-seen", {
+                        groupId: receiverEmail,
+                        user: loggedUser
+                    })
+                } else {
+                    socket.emit("mark-seen", {
+                        from: msgObj.from,
+                        to: loggedUser
+                    })
+                }
+            }
+
+            chatBody.scrollTop = chatBody.scrollHeight
+        })
+        socket.on("messages-seen", ({ from, to }) => {
+
+            document.querySelectorAll(".message.sent").forEach(msg => {
+
+                const timeSpan = msg.querySelector(".time")
+
+                if (timeSpan) {
+
+                    const text = timeSpan.innerHTML
+
+                    // Replace any tick with blue double tick
+                    timeSpan.innerHTML = text.replace(
+                        /✓✓|✓/,
+                        `<span style="color:blue">✓✓</span>`
+                    )
+                }
+            })
+        })
+        document.getElementById("selectOption").addEventListener("click", () => {
+
+            selectMode = true
+            selectedMessages.clear()
+
+            // ✅ SHOW TOP BAR
+            document.getElementById("selectBar").style.display = "block"
+
+            document.querySelectorAll(".message").forEach(msg => {
+
+                const checkbox = document.createElement("input")
+                checkbox.type = "checkbox"
+                checkbox.className = "msg-checkbox"
+
+                checkbox.addEventListener("change", () => {
+                    const id = msg.getAttribute("data-id")
+                    if (checkbox.checked)
+                        selectedMessages.add(id)
+                    else
+                        selectedMessages.delete(id)
+                })
+
+                msg.prepend(checkbox)
+            })
+        })
+        document.getElementById("cancelSelect").addEventListener("click", () => {
+            selectMode = false
+            selectedMessages.clear()
+            document.querySelectorAll(".msg-checkbox").forEach(cb => cb.remove())
+            document.getElementById("selectBar").style.display = "none"
+
+            // optional: close dropdown
+            dropdownMenu.style.display = "none"
+        })
+        socket.on("message-status-update", (msgObj) => {
+
+            const sentMessages = document.querySelectorAll(".message.sent")
+            const lastMessage = sentMessages[sentMessages.length - 1]
+
+            if (lastMessage) {
+
+                const timeSpan = lastMessage.querySelector(".time")
+
+                let tick = ""
+
+                if (!msgObj.delivered) tick = "✓"
+                if (msgObj.delivered && !msgObj.seen) tick = "✓✓"
+                if (msgObj.seen) tick = `<span style="color:blue">✓✓</span>`
+
+                const time = formatTime(msgObj.timestamp)
+
+                timeSpan.innerHTML = `${time} ${tick}`
+            }
+        })
+        let lastMessageDate = null
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4)
+            const base64 = (base64String + padding)
+                .replace(/-/g, '+')
+                .replace(/_/g, '/')
+
+            const rawData = window.atob(base64)
+            const outputArray = new Uint8Array(rawData.length)
+
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i)
+            }
+            return outputArray
+        }
+        async function subscribeUser() {
+
+            const registration = await navigator.serviceWorker.ready
+
+            const VAPID_PUBLIC_KEY = "BGBN28y8CEWU4UHdBgaOZcSBFThn8YkbScCRogRVy_sHzO_q66kfBS-sVlUr6QiE7TM7X3iRU1krbfVAuJhhOIM"
+
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+            })
+
+            await fetch("/subscribe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    email: localStorage.getItem("loggedUser"),
+                    subscription
+                })
+            })
+        }
+
+        // subscribeUser()
+        async function setupNotifications() {
+
+            console.log("Notification permission:", Notification.permission)
+
+            if (Notification.permission === "granted") {
+                console.log("Already granted → subscribing...")
+                await subscribeUser()
+                return
+            }
+
+            if (Notification.permission === "default") {
+
+                const permission = await Notification.requestPermission()
+                console.log("User response:", permission)
+
+                if (permission === "granted") {
+                    await subscribeUser()
+                }
+            }
+
+            if (Notification.permission === "denied") {
+                console.log("❌ Notifications BLOCKED")
+            }
+        }
+
+        // 🔥 CALL ONLY ONCE
+        setupNotifications()
+
+        function getDateLabel(date) {
+
+            const msgDate = new Date(date)
+            const today = new Date()
+
+            const yesterday = new Date()
+            yesterday.setDate(today.getDate() - 1)
+
+            if (msgDate.toDateString() === today.toDateString()) {
+                return "Today"
+            }
+
+            if (msgDate.toDateString() === yesterday.toDateString()) {
+                return "Yesterday"
+            }
+
+            const day = String(msgDate.getDate()).padStart(2, "0")
+            const month = String(msgDate.getMonth() + 1).padStart(2, "0")
+            const year = msgDate.getFullYear()
+
+            return `${day}/${month}/${year}`
+        }
+        function insertDateDivider(timestamp) {
+
+            const msgDate = new Date(timestamp).toDateString()
+
+            if (lastMessageDate !== msgDate) {
+
+                lastMessageDate = msgDate
+
+                const divider = document.createElement("div")
+                divider.className = "date-divider"
+
+                const label = getDateLabel(timestamp)
+
+                divider.innerHTML = `<span>${label}</span>`
+
+                chatBody.appendChild(divider)
+            }
+        }
+        function openImageModal(url) {
+
+            const modal = document.getElementById("imageModal")
+            const img = document.getElementById("modalImage")
+            const downloadBtn = document.getElementById("downloadImage")
+
+            modal.style.display = "block"
+            img.src = url
+
+            // ✅ download button
+            downloadBtn.href = url
+        }
+        function addMessage(msgObj, type) {
+
+            insertDateDivider(msgObj.timestamp)
+            const msg = document.createElement("div")
+            msg.className = "message " + type
+            let startX = 0
+
+            msg.addEventListener("touchstart", (e) => {
+                startX = e.touches[0].clientX
+            })
+
+            msg.addEventListener("touchend", (e) => {
+                let endX = e.changedTouches[0].clientX
+
+                if (endX - startX > 80 && Math.abs(endX - startX) > 50) { // swipe right
+                    startReply(msgObj)
+                }
+            })
+            let replyBlock = ""
+
+            if (msgObj.replyTo) {
+
+                let replyName = msgObj.replyTo.name || msgObj.replyTo.from
+
+                if (msgObj.replyTo.from === loggedUser) {
+                    replyName = "You"
+                } else if (contactNames[msgObj.replyTo.from]) {
+                    replyName = contactNames[msgObj.replyTo.from]
+                }
+
+                replyBlock = `
+        <div class="reply-box" 
+     onclick="scrollToMessage('${msgObj.replyTo.messageId}')"
+     style="
+        border-left:3px solid green;
+        padding:5px;
+        margin-bottom:5px;
+        background:#f0f0f0;
+        cursor:pointer;
+        max-width:200px;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+     ">
+     
+    <small>${replyName}</small><br>
+    <span style="
+        display:block;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    ">
+        ${msgObj.replyTo.text}
+    </span>
+</div>
+    `
+            }
+
+            let content = ""
+            let senderLabel = ""
+            if (isGroup && msgObj.from !== loggedUser) {
+
+                let senderName = msgObj.from
+
+                if (contactNames[msgObj.from]) {
+                    senderName = contactNames[msgObj.from]
+                }
+
+                senderLabel = `
+        <small style="color:#075E54;font-weight:bold">
+            ${senderName}
+        </small><br>
+    `
+            }
+            if (msgObj.deletedForEveryone) {
+                const msg = document.createElement("div")
+                msg.className = "message " + type
+                msg.setAttribute("data-id", msgObj._id)
+
+                msg.innerHTML = `
+        This message was deleted
+        <span class="time"></span>
+    `
+
+                chatBody.appendChild(msg)
+                return
+            }
+
+            if (msgObj.type === "image") {
+                content = `
+    <img src="${msgObj.message}" 
+         style="max-width:200px;border-radius:10px;cursor:pointer;"
+         onclick="openImageModal('${msgObj.message}')">
+`
+            }
+            else if (msgObj.type === "video") {
+
+                let videoUrl = msgObj.message
+
+                // 🔥 FIX cloudinary wrong path
+                // videoUrl = videoUrl.replace("/image/upload/", "/video/upload/")
+
+                content = `
+    <video controls width="200">
+        <source src="${msgObj.message}" type="video/mp4">
+    </video>
+    `
+            }
+            else if (msgObj.type === "audio") {
+                content = `<audio controls>
+                     <source src="${msgObj.message}">
+                   </audio>`
+            }
+            else if (
+                msgObj.type === "file" ||
+                msgObj.type === "pdf" ||
+                msgObj.type === "word"
+            ) {
+
+                const fileName = msgObj.originalName || msgObj.message.split("/").pop()
+                const ext = fileName.split(".").pop().toLowerCase()
+
+                let icon = "📄"
+
+                if (ext === "pdf") icon = "📕"
+                else if (ext === "doc" || ext === "docx") icon = "📝"
+                else if (ext === "ppt" || ext === "pptx") icon = "📊"
+                else if (ext === "xls" || ext === "xlsx") icon = "📈"
+                let fileUrl = msgObj.message
+
+                // 🔥 FIX PDF WRONG PATH
+                if (ext === "pdf") {
+                    fileUrl = fileUrl.replace("/image/upload/", "/raw/upload/")
+                }
+
+                content = `
+    <div onclick="handleFileClick('${fileUrl}', '${fileName}')"
+         style="
+            display:flex;
+            align-items:center;
+            gap:10px;
+            padding:10px;
+            background:${type === "sent" ? "#dcf8c6" : "#fff"};
+            border-radius:10px;
+            cursor:pointer;
+            max-width:230px;
+         ">
+
+        <span style="font-size:22px">${icon}</span>
+
+        <div>
+            <div style="font-size:14px;">${fileName}</div>
+            <div style="font-size:12px;color:gray;">${ext.toUpperCase()}</div>
+        </div>
+    </div>
+    `
+            } else {
+                // content = msgObj.message
+                content = `<div class="msg-text">${msgObj.message}</div>`
+            }
+
+            let tick = ""
+
+            if (type === "sent") {
+                if (!msgObj.delivered) tick = "✓"
+                if (msgObj.delivered && !msgObj.seen) tick = "✓✓"
+                if (msgObj.seen) tick = `<span style="color:blue">✓✓</span>`
+            }
+
+            const time = formatTime(msgObj.timestamp)
+
+            msg.innerHTML = `
+    ${senderLabel}
+    ${replyBlock}   
+    ${content}
+    <span class="time">${time} ${tick}</span>
+`
+            msg.setAttribute("data-id", msgObj._id)
+            if (selectMode) {
+                const checkbox = document.createElement("input")
+                checkbox.type = "checkbox"
+                checkbox.className = "msg-checkbox"
+
+                checkbox.addEventListener("change", () => {
+                    if (checkbox.checked)
+                        selectedMessages.add(msgObj._id)
+                    else
+                        selectedMessages.delete(msgObj._id)
+                })
+
+                msg.prepend(checkbox)
+            }
+            msg.addEventListener("dblclick", () => {
+                startReply(msgObj)
+            })
+            chatBody.appendChild(msg)
+        }
+        function scrollToMessage(id) {
+
+            const target = document.querySelector(`.message[data-id="${id}"]`)
+
+            if (target) {
+                target.scrollIntoView({ behavior: "smooth", block: "center" })
+
+                target.style.background = "#ffff99"
+
+                setTimeout(() => {
+                    target.style.background = ""
+                }, 2000)
+            }
+        }
+        function closeImageModal() {
+            document.getElementById("imageModal").style.display = "none"
+        }
+        function formatTime(time) {
+            const date = new Date(time)
+            return date.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+            })
+        }
+        async function startCall() {
+
+            document.getElementById("callModal").style.display = "block"
+
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            })
+
+            document.getElementById("localVideo").srcObject = localStream
+
+            peerConnection = new RTCPeerConnection(servers)
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream)
+            })
+
+            peerConnection.ontrack = event => {
+                document.getElementById("remoteVideo").srcObject = event.streams[0]
+            }
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit("ice-candidate", {
+                        to: receiverEmail,
+                        candidate: event.candidate
+                    })
+                }
+            }
+
+            const offer = await peerConnection.createOffer()
+            await peerConnection.setLocalDescription(offer)
+
+            socket.emit("call-user", {
+                to: receiverEmail,
+                offer,
+                from: loggedUser
+            })
+        }
+        socket.on("incoming-call", ({ from, offer, type }) => {
+            const currentChat = localStorage.getItem("chatWith")
+
+            console.log("📞 Incoming call from:", from)
+            console.log("Current chat:", currentChat)
+
+            // ❌ IF USER IS NOT IN THAT CHAT → SKIP POPUP
+            if (currentChat !== from) {
+                console.log("❌ Different chat → skip popup, use notification")
+                return
+            }
+
+
+            // const accept = confirm(`Incoming ${type} call from ${from}`)
+
+            // if (!accept) {
+            //     console.log("❌ Call rejected in chat.html")
+
+            //     // 🔥 VERY IMPORTANT
+            //     socket.emit("call-rejected", {
+            //         to: from,
+            //         from: loggedUser
+            //     })
+
+            //     return
+            // }
+
+            localStorage.setItem("callType", "receiver")
+            localStorage.setItem("incomingOffer", JSON.stringify(offer))
+            localStorage.setItem("incomingFrom", from)
+
+            if (type === "voice") {
+                window.location.href = isGroup
+                    ? "/groupvoicecall.html"
+                    : "/voicechat.html"
+            }
+
+            if (type === "video") {
+                window.location.href = isGroup
+                    ? "/groupvideocall.html"
+                    : "/videocall.html"
+            }
+
+        })
+        socket.on("incoming-group-call", ({ from, groupId, type }) => {
+
+            // const accept = confirm(`Group ${type} call from ${from}`)
+
+            if (!accept) return
+
+            localStorage.setItem("chatWith", groupId)
+            localStorage.setItem("callType", "receiver")
+
+            if (type === "video") {
+                window.location.href = "/groupvideocall.html"
+            } else {
+                window.location.href = "/groupvoicecall.html"
+            }
+        })
+        socket.on("call-answered", async ({ answer }) => {
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(answer)
+            )
+        })
+        socket.on("ice-candidate", async ({ candidate }) => {
+            if (peerConnection) {
+                try {
+                    await peerConnection.addIceCandidate(
+                        new RTCIceCandidate(candidate)
+                    )
+                } catch (err) {
+                    console.error("ICE error:", err)
+                }
+            }
+        })
+        function endCall() {
+
+            if (peerConnection) {
+                peerConnection.close()
+                peerConnection = null
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop())
+            }
+
+            document.getElementById("callModal").style.display = "none"
+        }
+
+    </script>
+    <!-- IMAGE PREVIEW MODAL -->
+    <!-- IMAGE PREVIEW MODAL -->
+    <div id="imageModal" style="
+    display:none;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:black;
+    z-index:9999;
+">
+
+        <!-- TOP BAR -->
+        <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:15px 20px;
+        background:rgba(0,0,0,0.7);
+        position:absolute;
+        top:0;
+        width:100%;
+    ">
+            <button onclick="closeImageModal()" style="background:red;color:white;
+                   border:none;padding:8px 15px;
+                   border-radius:5px;">
+                Close
+            </button>
+
+            <a id="downloadImage" download style="background:#25D366;color:white;
+                   padding:8px 15px;
+                   border-radius:5px;
+                   text-decoration:none;">
+                Download
+            </a>
+        </div>
+
+        <!-- IMAGE CENTER -->
+        <div style="
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        height:100%;
+    ">
+            <img id="modalImage" style="max-width:95%;max-height:95%;object-fit:contain;">
+        </div>
+
+    </div>
+</body>
+
+</html>

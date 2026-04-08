@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#075E54">
+
+    <title>Group Video Call</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+
+    <style>
+        body {
+            margin: 0;
+            background: #0b141a;
+            color: white;
+            font-family: sans-serif;
+        }
+
+        /* HEADER */
+        .top {
+            position: fixed;
+            top: 10px;
+            left: 15px;
+            z-index: 10;
+        }
+
+        .back {
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        /* GRID */
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+            padding: 60px 10px 100px;
+        }
+
+        /* USER CARD */
+        .user-card {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: black;
+            cursor: pointer;
+        }
+
+        .user-card video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* USER NAME */
+        .user-name {
+            position: absolute;
+            bottom: 5px;
+            left: 8px;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 6px;
+            border-radius: 5px;
+        }
+
+        /* FOCUS MODE */
+        .focus {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9;
+            background: black;
+        }
+
+        .focus video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            /* 🔥 FIX */
+            background: black;
+            /* 🔥 clean look */
+        }
+
+        /* CONTROLS */
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .controls button {
+            background: #222;
+            border: none;
+            color: white;
+            padding: 12px;
+            border-radius: 50%;
+            font-size: 18px;
+        }
+
+        .end-btn {
+            background: red;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="top">
+        <i class="fa-solid fa-arrow-left back" onclick="endCall()"></i>
+    </div>
+
+    <div id="usersGrid" class="users-grid"></div>
+
+    <div class="controls">
+        <button onclick="toggleMute()" id="muteBtn"><i class="fa-solid fa-microphone"></i></button>
+        <button onclick="toggleCamera()" id="camBtn"><i class="fa-solid fa-video"></i></button>
+        <button onclick="shareScreen()" id="screenBtn">
+            <i class="fa-solid fa-display"></i>
+        </button>
+        <button onclick="switchCamera()" id="switchCamBtn">
+            <i class="fa-solid fa-rotate"></i>
+        </button>
+        <button onclick="endCall()" class="end-btn"><i class="fa-solid fa-phone-slash"></i></button>
+    </div>
+    <audio id="ringtone" loop>
+        <source src="/ringtone.mp3" type="audio/mpeg">
+    </audio>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/simple-peer@9/simplepeer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+        eruda.init();
+    </script>
+
+    <script>
+        const socket = io("/", { transports: ["websocket"] })
+
+        // let loggedUser = ""
+
+        // async function getUser() {
+
+        //     const res = await fetch("/me", {
+        //         credentials: "include"
+        //     })
+
+        //     const data = await res.json()
+
+        //     loggedUser = data.email
+
+        //     socket.emit("register-user", loggedUser)
+        // }
+
+        // getUser()
+        const loggedUser = localStorage.getItem("loggedUser")
+        const params = new URLSearchParams(window.location.search)
+
+        let groupId = params.get("from") || localStorage.getItem("chatWith")
+
+        const usersGrid = document.getElementById("usersGrid")
+
+        let groupMembers = []
+        let peers = {}
+        let localStream
+        let isMuted = false
+        let camOn = true
+        let focused = null
+        let usingFrontCamera = true
+        let videoDevices = []
+        let currentCameraIndex = 0
+        const ringtone = document.getElementById("ringtone")
+        let callTimeout
+        let isConnected = false
+
+        socket.emit("register-user", loggedUser)
+
+        /* START CALL */
+        async function startCall() {
+            startRinging() // 🔥 START RING
+
+            callTimeout = setTimeout(() => {
+                socket.emit("call-timeout", {
+                    from: loggedUser,
+                    to: groupId,
+                    type: "video", // or "voice"
+                    isGroup: true
+                })
+                alert("No one joined the call")
+                endCall()
+            }, 60000)
+
+            await getCameras()
+
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    deviceId: videoDevices[currentCameraIndex]?.deviceId
+                },
+                audio: true
+            })
+
+            addVideo(loggedUser, localStream, "You")
+
+            const res = await fetch(`/group-members/${groupId}/${loggedUser}`)
+            const data = await res.json()
+
+            groupMembers = data.members
+
+            socket.emit("group-call", {
+                groupId,
+                from: loggedUser,
+                type: "video"
+            })
+
+            socket.emit("join-group-call", {
+                groupId,
+                user: loggedUser
+            })
+        }
+        function startRinging() {
+            ringtone.currentTime = 0
+            ringtone.play().catch(() => { })
+        }
+
+        function stopRinging() {
+            ringtone.pause()
+            ringtone.currentTime = 0
+        }
+
+        /* ADD VIDEO */
+        function addVideo(email, stream, name) {
+
+            if (document.getElementById("video-" + email)) return
+
+            const card = document.createElement("div")
+            card.className = "user-card"
+            card.id = "card-" + email
+
+            card.innerHTML = `
+        <video id="video-${email}" autoplay ${email === loggedUser ? "muted" : ""}></video>
+        <div class="user-name">${name}</div>
+    `
+
+            card.onclick = () => toggleFocus(card)
+
+            usersGrid.appendChild(card)
+
+            document.getElementById("video-" + email).srcObject = stream
+        }
+
+        /* FOCUS MODE */
+        function toggleFocus(card) {
+
+            if (focused) {
+                focused.classList.remove("focus")
+                focused = null
+                return
+            }
+
+            card.classList.add("focus")
+            focused = card
+        }
+
+        /* CREATE PEER */
+        function createPeer(userEmail, initiator, signal = null) {
+
+            if (peers[userEmail]) return
+
+            const peer = new SimplePeer({
+                initiator,
+                trickle: false,
+                stream: localStream
+            })
+
+            peers[userEmail] = peer
+
+            peer.on("signal", data => {
+                if (initiator) {
+                    socket.emit("call-user", {
+                        to: userEmail,
+                        offer: data,
+                        from: loggedUser,
+                        type: "video",
+                        isGroupCall: true
+                    })
+                } else {
+                    socket.emit("answer-call", {
+                        to: userEmail,
+                        answer: data
+                    })
+                }
+            })
+
+            peer.on("stream", stream => {
+                if (!isConnected) {
+                    isConnected = true
+                    stopRinging()
+                    clearTimeout(callTimeout)
+                }
+
+                const user = groupMembers.find(m => m.email === userEmail)
+
+                addVideo(userEmail, stream, user?.name || userEmail)
+            })
+
+            if (signal) peer.signal(signal)
+        }
+
+        /* EVENTS */
+        socket.on("user-joined-call", ({ user }) => {
+            if (user === loggedUser) return
+            createPeer(user, true)
+        })
+
+        socket.on("incoming-call", ({ from, offer, type }) => {
+            if (type !== "video") return
+            createPeer(from, false, offer)
+        })
+
+        socket.on("call-answered", ({ from, answer }) => {
+            if (peers[from]) peers[from].signal(answer)
+        })
+
+        socket.on("call-ended", () => {
+            alert("Call ended")
+            // window.location.href = "/chat.html"
+            const name = localStorage.getItem("chatName") || "Group"
+
+            window.location.href =
+                `/chat.html?from=${groupId}&isGroup=true&name=${name}&openChat=true`
+        })
+
+        /* CONTROLS */
+        function toggleMute() {
+
+            isMuted = !isMuted   // 🔥 FIRST CHANGE STATE
+
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMuted   // 🔥 IMPORTANT
+            })
+
+            const btn = document.getElementById("muteBtn")
+
+            if (isMuted) {
+                btn.style.background = "red"
+                btn.innerHTML = `<i class="fa-solid fa-microphone-slash"></i>`
+            } else {
+                btn.style.background = "#222"
+                btn.innerHTML = `<i class="fa-solid fa-microphone"></i>`
+            }
+        }
+        let screenSharing = false
+
+        async function shareScreen() {
+
+            try {
+
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true
+                })
+
+                const screenTrack = screenStream.getVideoTracks()[0]
+
+                // 🔥 REPLACE VIDEO TRACK IN ALL PEERS
+                Object.values(peers).forEach(peer => {
+
+                    const sender = peer._pc.getSenders().find(s => s.track.kind === "video")
+
+                    if (sender) {
+                        sender.replaceTrack(screenTrack)
+                    }
+
+                })
+
+                // 🔥 SHOW SCREEN LOCALLY
+                document.getElementById("video-" + loggedUser).srcObject = screenStream
+
+                screenSharing = true
+
+                const btn = document.getElementById("screenBtn")
+                btn.style.background = "green"
+
+                // 🔥 WHEN USER STOPS SCREEN SHARE
+                screenTrack.onended = () => {
+
+                    stopScreenShare()
+                }
+
+            } catch (err) {
+                console.log("❌ Screen share error:", err)
+            }
+        }
+        function stopScreenShare() {
+
+            const videoTrack = localStream.getVideoTracks()[0]
+
+            Object.values(peers).forEach(peer => {
+
+                const sender = peer._pc.getSenders().find(s => s.track.kind === "video")
+
+                if (sender) {
+                    sender.replaceTrack(videoTrack)
+                }
+
+            })
+
+            document.getElementById("video-" + loggedUser).srcObject = localStream
+
+            screenSharing = false
+
+            document.getElementById("screenBtn").style.background = "#222"
+        }
+
+        function toggleCamera() {
+
+            camOn = !camOn
+
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = camOn
+            })
+
+            const btn = document.getElementById("camBtn")
+
+            if (!camOn) {
+                btn.style.background = "red"
+                btn.innerHTML = `<i class="fa-solid fa-video-slash"></i>`
+            } else {
+                btn.style.background = "#222"
+                btn.innerHTML = `<i class="fa-solid fa-video"></i>`
+            }
+        }
+        function replaceVideoTrack(newTrack) {
+
+            Object.values(peers).forEach(peer => {
+
+                const sender = peer._pc.getSenders().find(s => s.track.kind === "video")
+
+                if (sender) {
+                    sender.replaceTrack(newTrack)
+                }
+
+            })
+        }
+        async function getCameras() {
+
+            const devices = await navigator.mediaDevices.enumerateDevices()
+
+            videoDevices = devices.filter(device => device.kind === "videoinput")
+
+            console.log("📷 Cameras:", videoDevices)
+
+
+        }
+        async function switchCamera() {
+
+            try {
+
+                if (!camOn) {
+                    alert("Turn camera ON first")
+                    return
+                }
+
+                if (videoDevices.length < 2) {
+                    alert("No secondary camera")
+                    return
+                }
+
+                // 🔥 STOP OLD CAMERA FIRST (IMPORTANT FIX)
+                const oldTrack = localStream.getVideoTracks()[0]
+                oldTrack.stop()
+
+                currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length
+
+                // 🔥 NOW OPEN NEW CAMERA
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        deviceId: {
+                            exact: videoDevices[currentCameraIndex].deviceId
+                        }
+                    }
+                })
+
+                const newVideoTrack = newStream.getVideoTracks()[0]
+
+                // 🔥 REPLACE TRACK IN PEERS
+                replaceVideoTrack(newVideoTrack)
+
+                // 🔥 UPDATE LOCAL STREAM
+                localStream.removeTrack(oldTrack)
+                localStream.addTrack(newVideoTrack)
+
+                // 🔥 UPDATE UI
+                document.getElementById("video-" + loggedUser).srcObject = localStream
+
+                console.log("✅ Camera switched to:", currentCameraIndex)
+
+                // 🔥 BUTTON FEEDBACK
+                const btn = document.getElementById("switchCamBtn")
+                btn.style.background = "green"
+
+                setTimeout(() => {
+                    btn.style.background = "#222"
+                }, 500)
+
+            } catch (err) {
+                console.log("❌ Camera switch error:", err)
+
+                // 🔥 RECOVER CAMERA IF FAILED
+                const recoveryStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                localStream = recoveryStream
+                document.getElementById("video-" + loggedUser).srcObject = recoveryStream
+            }
+        }
+        /* END CALL */
+        function endCall() {
+
+            stopRinging()
+            clearTimeout(callTimeout)
+
+
+            socket.emit("end-call", {
+                to: groupId,
+                from: loggedUser,
+                type: "video",
+                duration: 0,
+                isGroup: true
+            })
+
+            Object.values(peers).forEach(p => p.destroy())
+
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop())
+            }
+
+            // window.location.href = "/chat.html"
+            const name = localStorage.getItem("chatName") || "Group"
+
+            window.location.href =
+                `/chat.html?from=${groupId}&isGroup=true&name=${name}&openChat=true`
+        }
+        document.addEventListener("visibilitychange", () => {
+
+            if (!document.hidden) {
+                console.log("🔄 Tab active again")
+
+                // 🔥 RECONNECT SOCKET
+                if (!socket.connected) {
+                    socket.connect()
+                }
+
+                // 🔥 RE-ENABLE TRACKS
+                if (localStream) {
+                    localStream.getTracks().forEach(track => {
+                        track.enabled = true
+                    })
+                }
+            }
+        })
+
+        /* START */
+        startCall()
+    </script>
+
+</body>
+
+</html>
