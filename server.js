@@ -2022,9 +2022,17 @@ app.get("/calls/:email", async (req, res) => {
     const email = req.params.email
     const viewer = await User.findOne({ email })
 
+    // const calls = await Call.find({
+    //     owner: email,
+    //     deletedFor: { $ne: email }
+    // }).sort({ timestamp: -1 })
     const calls = await Call.find({
-        owner: email,
-        deletedFor: { $ne: email }
+    deletedFor: { $ne: email },
+    $or: [
+        { owner: email },              // ✅ new system
+        { caller: email },             // ✅ old data
+        { receiver: email }            // ✅ old data
+    ]
     }).sort({ timestamp: -1 })
 
     const result = []
