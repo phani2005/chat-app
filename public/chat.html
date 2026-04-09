@@ -880,8 +880,13 @@
             console.log("Notification permission:", Notification.permission)
 
             if (Notification.permission === "granted") {
-                console.log("Already granted → subscribing...")
-                await subscribeUser()
+                console.log("✅ Already granted → subscribing...")
+                try {
+                    await subscribeUser()
+                    console.log("✅ Push subscription active")
+                } catch (err) {
+                    console.log("❌ Subscribe error:", err)
+                }
                 return
             }
 
@@ -891,13 +896,50 @@
                 console.log("User response:", permission)
 
                 if (permission === "granted") {
-                    await subscribeUser()
+                    try {
+                        await subscribeUser()
+                        console.log("✅ Push subscription active")
+                    } catch (err) {
+                        console.log("❌ Subscribe error:", err)
+                    }
+                } else if (permission === "denied") {
+                    showNotificationBlockedBanner()
                 }
             }
 
             if (Notification.permission === "denied") {
-                console.log("❌ Notifications BLOCKED")
+                console.log("❌ Notifications BLOCKED — user must enable in browser settings")
+                showNotificationBlockedBanner()
             }
+        }
+
+        function showNotificationBlockedBanner() {
+            // Don't show duplicate banners
+            if (document.getElementById("notif-blocked-banner")) return
+
+            const banner = document.createElement("div")
+            banner.id = "notif-blocked-banner"
+            banner.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                background: #ff5252;
+                color: white;
+                padding: 10px 15px;
+                text-align: center;
+                font-size: 13px;
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            `
+            banner.innerHTML = `
+                <span>🔕 Notifications are blocked. Enable them in your browser settings (click 🔒 icon in address bar → Notifications → Allow)</span>
+                <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.3);border:none;color:white;padding:4px 10px;border-radius:4px;cursor:pointer;">✕</button>
+            `
+            document.body.prepend(banner)
         }
 
         // 🔥 CALL ONLY ONCE

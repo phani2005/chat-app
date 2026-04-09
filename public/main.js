@@ -6,6 +6,74 @@ if ("serviceWorker" in navigator) {
             .catch(err => console.log("❌ SW Error:", err));
     });
 }
+
+// 🔥 NOTIFICATION SETUP ON MAIN PAGE
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i)
+    }
+    return outputArray
+}
+
+async function subscribeUserPush() {
+    try {
+        const registration = await navigator.serviceWorker.ready
+        const VAPID_PUBLIC_KEY = "BGBN28y8CEWU4UHdBgaOZcSBFThn8YkbScCRogRVy_sHzO_q66kfBS-sVlUr6QiE7TM7X3iRU1krbfVAuJhhOIM"
+
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        })
+
+        await fetch("/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                email: localStorage.getItem("loggedUser"),
+                subscription
+            })
+        })
+        console.log("✅ Push subscription active on main page")
+    } catch (err) {
+        console.log("❌ Push subscribe error:", err)
+    }
+}
+
+async function setupNotificationsMain() {
+    if (!("Notification" in window)) {
+        console.log("❌ Notifications not supported")
+        return
+    }
+
+    console.log("Notification permission:", Notification.permission)
+
+    if (Notification.permission === "granted") {
+        await subscribeUserPush()
+        return
+    }
+
+    if (Notification.permission === "default") {
+        const permission = await Notification.requestPermission()
+        console.log("User notification response:", permission)
+        if (permission === "granted") {
+            await subscribeUserPush()
+        }
+    }
+
+    if (Notification.permission === "denied") {
+        console.log("❌ Notifications BLOCKED — user must enable in browser settings")
+    }
+}
+
+// 🔥 Setup notifications when main page loads
+setupNotificationsMain()
+
 const socket = io(window.location.origin)
 
 const loggedUserEmail = localStorage.getItem("loggedUser")
