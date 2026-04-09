@@ -1301,25 +1301,8 @@
             }
 
         })
-        socket.on("incoming-group-call", ({ from, groupId, type }) => {
-
-            const accept = confirm(`Incoming ${type === "video" ? "Video" : "Voice"} group call. Join?`)
-
-            if (!accept) {
-                console.log("❌ Group call declined")
-                return
-            }
-
-            localStorage.setItem("chatWith", groupId)
-            localStorage.setItem("callType", "receiver")
-            localStorage.setItem("isGroup", "true")
-
-            if (type === "video") {
-                window.location.href = "/groupvideocall.html"
-            } else {
-                window.location.href = "/groupvoicecall.html"
-            }
-        })
+        // 🔥 Group calls handled via PUSH NOTIFICATIONS ONLY (like normal calls)
+        // No incoming-group-call socket handler needed
         socket.on("call-answered", async ({ answer }) => {
             await peerConnection.setRemoteDescription(
                 new RTCSessionDescription(answer)

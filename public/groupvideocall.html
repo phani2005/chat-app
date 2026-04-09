@@ -162,8 +162,14 @@
         // getUser()
         const loggedUser = localStorage.getItem("loggedUser")
         const params = new URLSearchParams(window.location.search)
+        const fromParam = params.get("from")
 
-        let groupId = params.get("from") || localStorage.getItem("chatWith")
+        let groupId = fromParam || localStorage.getItem("chatWith")
+
+        // 🔥 If opened from notification → mark as receiver
+        if (fromParam) {
+            localStorage.setItem("callType", "receiver")
+        }
 
         const usersGrid = document.getElementById("usersGrid")
 
