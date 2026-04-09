@@ -221,7 +221,7 @@
                 socket.emit("call-timeout", {
                     from: loggedUser,
                     to: groupId,
-                    type: "voice", // or "voice"
+                    type: "voice",
                     isGroup: true
                 })
                 alert("No one joined the call")
@@ -239,23 +239,40 @@
             const me = groupMembers.find(m => m.email === loggedUser)
             if (me) addUserToUI(me)
 
-            // ✅ JOIN FIRST
+            // ✅ Emit group-call to notify others
+            socket.emit("group-call", {
+                groupId,
+                from: loggedUser,
+                type: "voice"
+            })
+
+            // ✅ Join call room
+            socket.emit("join-group-call", {
+                groupId,
+                user: loggedUser
+            })
+        }
+
+        async function joinAsReceiver() {
+
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+            const res = await fetch(`/group-members/${groupId}/${loggedUser}`)
+            const data = await res.json()
+
+            groupMembers = data.members
+            document.getElementById("groupName").innerText = data.groupName
+
+            const me = groupMembers.find(m => m.email === loggedUser)
+            if (me) addUserToUI(me)
+
+            // 🔥 Only join existing call room (DON'T emit group-call)
             socket.emit("join-group-call", {
                 groupId,
                 user: loggedUser
             })
 
-            // ✅ ONLY CALL IF INITIATOR
-            if (localStorage.getItem("callType") !== "receiver") {
-
-                socket.emit("group-call", {
-                    groupId,
-                    from: loggedUser,
-                    type: "voice"
-                })
-
-            }
-
+            console.log("📥 Receiver joined group voice call")
         }
         function addUserToUI(user) {
 
@@ -452,7 +469,13 @@
         }
 
         // START CALL
-        startGroupCall()
+        const callType = localStorage.getItem("callType")
+
+        if (callType === "receiver") {
+            joinAsReceiver()
+        } else {
+            startGroupCall()
+        }
 
     </script>
 
