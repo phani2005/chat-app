@@ -14,6 +14,100 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="manifest" href="/manifest.json">
 
+    <style>
+        /* 3-dot menu button */
+        .menu-wrapper {
+            position: relative;
+        }
+
+        .menu-dots {
+            font-size: 22px;
+            cursor: pointer;
+            color: white;
+            padding: 5px 10px;
+            user-select: none;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: 30px;
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            flex-direction: column;
+            border-radius: 10px;
+            min-width: 180px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .dropdown-menu div {
+            padding: 12px 15px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.2s;
+            color: #222;
+        }
+
+        .dropdown-menu div:hover {
+            background: #f0f0f0;
+            color: black;
+        }
+
+        /* Select bar */
+        .select-bar {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .select-bar .danger-btn {
+            background: linear-gradient(135deg, #ff416c, #ff4b2b);
+            border: none;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.25s;
+        }
+
+        .select-bar .danger-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
+        }
+
+        .select-bar .cancel-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.25s;
+        }
+
+        .select-bar .cancel-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .call-checkbox {
+            width: 18px;
+            height: 18px;
+            accent-color: #00c6ff;
+            margin-right: 10px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+    </style>
+
 </head>
 
 <body>
@@ -26,11 +120,10 @@
 
             <h3>Calls</h3>
 
-            <div class="menu">
-                ⋮
-                <div class="dropdown">
-                    <p onclick="enterSelectMode()">Select</p>
-                    <p onclick="clearAllCalls()">Delete All</p>
+            <div class="menu-wrapper">
+                <i class="fa-solid fa-ellipsis-vertical menu-dots" id="menuBtn"></i>
+                <div class="dropdown-menu" id="dropdownMenu">
+                    <div id="selectOption">Select</div>
                 </div>
             </div>
 
@@ -38,6 +131,7 @@
 
         <div id="selectBar" style="display:none;" class="select-bar">
             <button id="deleteBtn" class="danger-btn">Delete</button>
+            <button id="deleteAllBtn" class="danger-btn">Delete All</button>
             <button id="cancelBtn" class="cancel-btn">Cancel</button>
         </div>
 
@@ -50,10 +144,36 @@
         const user = localStorage.getItem("loggedUser")
         let selectMode = false
         let selectedCalls = new Set()
+        let allCallData = []
+
+        // ================= MENU =================
+
+        const menuBtn = document.getElementById("menuBtn")
+        const dropdownMenu = document.getElementById("dropdownMenu")
+
+        menuBtn.addEventListener("click", () => {
+            dropdownMenu.style.display =
+                dropdownMenu.style.display === "flex"
+                    ? "none"
+                    : "flex"
+        })
+
+        document.addEventListener("click", (e) => {
+            const isClickInsideMenu = dropdownMenu.contains(e.target)
+            const isClickOnButton = menuBtn.contains(e.target)
+
+            if (!isClickInsideMenu && !isClickOnButton) {
+                dropdownMenu.style.display = "none"
+            }
+        })
+
+        // ================= NAVIGATION =================
 
         function goBack() {
             window.location.href = "/main.html"
         }
+
+        // ================= LOAD CALLS =================
 
         async function loadCalls() {
 
@@ -61,6 +181,8 @@
 
             const calls = await res.json()
             console.log("Calls: ", calls)
+
+            allCallData = calls
 
             const container = document.getElementById("callList")
 
@@ -122,7 +244,7 @@ ${call.missed
                         : call.direction === "outgoing"
                             ? `<span style="color:#25D366;">Outgoing</span>`
                             : `<span style="color:#00c6ff;">Incoming</span>`}
-${!call.missed && call.duration > 0 ? `• ${formatDuration(call.duration)}` : ""}
+${!call.missed && call.duration > 0 ? ` • ${formatDuration(call.duration)}` : ""}
 
 <br>
 
@@ -149,7 +271,7 @@ ${formatTime(call.time)}
                     localStorage.setItem("chatName", call.name)
                     localStorage.setItem("isGroup", call.isGroup || false)
 
-                    window.location.href = `/chat.html?from=${call.otherUser}&isGroup=${call.isGroup || false}&name=${call.name}&openChat=true`
+                    window.location.href = `/chat.html?from=${encodeURIComponent(call.otherUser)}&isGroup=${call.isGroup || false}&name=${encodeURIComponent(call.name)}&openChat=true`
                 })
 
                 container.appendChild(div)
@@ -172,7 +294,6 @@ ${formatTime(call.time)}
         function formatTime(timestamp) {
             const date = new Date(timestamp)
             const now = new Date()
-            const diff = now - date
 
             // Today
             if (date.toDateString() === now.toDateString()) {
@@ -191,6 +312,11 @@ ${formatTime(call.time)}
 
         // ================= SELECT MODE =================
 
+        document.getElementById("selectOption").addEventListener("click", () => {
+            dropdownMenu.style.display = "none"
+            enterSelectMode()
+        })
+
         function enterSelectMode() {
             selectMode = true
             selectedCalls.clear()
@@ -198,7 +324,10 @@ ${formatTime(call.time)}
             document.getElementById("selectBar").style.display = "flex"
 
             // Add checkboxes to all call items
-            document.querySelectorAll(".contact").forEach(div => {
+            document.querySelectorAll("#callList .contact").forEach(div => {
+                // Don't add duplicate checkboxes
+                if (div.querySelector(".call-checkbox")) return
+
                 const checkbox = document.createElement("input")
                 checkbox.type = "checkbox"
                 checkbox.className = "call-checkbox"
@@ -206,7 +335,6 @@ ${formatTime(call.time)}
                     e.stopPropagation()
                     const id = div.getAttribute("data-id")
                     toggleCallSelection(id, div)
-                    checkbox.checked = selectedCalls.has(id)
                 })
                 div.prepend(checkbox)
             })
@@ -236,7 +364,8 @@ ${formatTime(call.time)}
             }
         }
 
-        // Delete selected calls
+        // ================= DELETE SELECTED =================
+
         document.getElementById("deleteBtn").addEventListener("click", async () => {
 
             if (selectedCalls.size === 0) {
@@ -257,13 +386,9 @@ ${formatTime(call.time)}
             loadCalls()
         })
 
-        // Cancel selection
-        document.getElementById("cancelBtn").addEventListener("click", () => {
-            exitSelectMode()
-        })
+        // ================= DELETE ALL =================
 
-        // Clear all calls
-        async function clearAllCalls() {
+        document.getElementById("deleteAllBtn").addEventListener("click", async () => {
 
             const confirmDelete = confirm("Delete all call history?")
             if (!confirmDelete) return
@@ -276,8 +401,17 @@ ${formatTime(call.time)}
                 })
             })
 
+            exitSelectMode()
             loadCalls()
-        }
+        })
+
+        // ================= CANCEL =================
+
+        document.getElementById("cancelBtn").addEventListener("click", () => {
+            exitSelectMode()
+        })
+
+        // ================= INIT =================
 
         loadCalls()
 

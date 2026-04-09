@@ -1230,7 +1230,8 @@ io.on("connection", (socket) => {
         const roomId = [from, to].sort().join("-")
 
         activeCalls[roomId] = {
-            users: [from] // 👈 VERY IMPORTANT
+            users: [from],
+            originalCaller: from // 🔥 Track who initiated the call
         }
 
         const receiverSockets = onlineUsers[to]
@@ -1292,7 +1293,8 @@ io.on("connection", (socket) => {
 
         if (!activeCalls[roomId]) {
             activeCalls[roomId] = {
-                users: []
+                users: [],
+                originalCaller: user1 // fallback
             }
         }
 
@@ -1338,6 +1340,9 @@ io.on("connection", (socket) => {
 
             const groupName = group.name
 
+            // 🔥 Get original caller (not who clicked End)
+            const groupCaller = call && call.originalCaller ? call.originalCaller : from
+
             // 🔥 Track who connected before cleanup
             const connectedUsers = call ? [...call.users] : []
 
@@ -1370,10 +1375,10 @@ io.on("connection", (socket) => {
                     await Call.create({
                         owner: member,
                         otherUser: groupId,
-                        caller: from,
+                        caller: groupCaller,
                         receiver: groupId,
                         type,
-                        direction: member === from ? "outgoing" : "incoming",
+                        direction: member === groupCaller ? "outgoing" : "incoming",
                         duration: 0,
                         missed: true,
                         isGroup: true,
@@ -1398,10 +1403,10 @@ io.on("connection", (socket) => {
                     await Call.create({
                         owner: member,
                         otherUser: groupId,
-                        caller: from,
+                        caller: groupCaller,
                         receiver: groupId,
                         type,
-                        direction: member === from ? "outgoing" : "incoming",
+                        direction: member === groupCaller ? "outgoing" : "incoming",
                         duration: didConnect ? duration : 0,
                         missed: !didConnect,
                         isGroup: true,
@@ -1455,26 +1460,30 @@ io.on("connection", (socket) => {
         const roomId = [from, to].sort().join("-")
         const call = activeCalls[roomId]
 
+        // 🔥 Determine ORIGINAL caller (not who clicked End)
+        const originalCaller = call && call.originalCaller ? call.originalCaller : from
+        const originalReceiver = originalCaller === from ? to : from
+
         // 🔥 Determine if call was connected
-        const wasConnected = call && call.users.includes(to)
+        const wasConnected = call && call.users.includes(from) && call.users.includes(to)
         const isMissed = !wasConnected
 
         // 🔥 CASE: NOT CONNECTED → MISSED CALL notification
         if (isMissed) {
 
-            const senderName = await getDisplayName(to, from)
+            const senderName = await getDisplayName(originalReceiver, originalCaller)
 
             await sendCallNotification({
-                toUsers: [to],
+                toUsers: [originalReceiver],
                 title: "Missed Call",
                 body: `❌ Missed ${callType} call from ${senderName}`,
                 data: {
-                    from,
+                    from: originalCaller,
                     callerName: senderName,
                     type,
                     status: "ended",
                     isGroup: false,
-                    tag: from
+                    tag: originalCaller
                 }
             })
         }
@@ -1482,12 +1491,12 @@ io.on("connection", (socket) => {
         delete activeCalls[roomId]
 
         // 🔥 Save TWO records — one for each user
-        // Caller's record (outgoing)
+        // Original Caller's record (outgoing)
         await Call.create({
-            owner: from,
-            otherUser: to,
-            caller: from,
-            receiver: to,
+            owner: originalCaller,
+            otherUser: originalReceiver,
+            caller: originalCaller,
+            receiver: originalReceiver,
             type,
             direction: "outgoing",
             duration: duration || 0,
@@ -1495,12 +1504,12 @@ io.on("connection", (socket) => {
             timestamp: new Date()
         })
 
-        // Receiver's record (incoming)
+        // Original Receiver's record (incoming)
         await Call.create({
-            owner: to,
-            otherUser: from,
-            caller: from,
-            receiver: to,
+            owner: originalReceiver,
+            otherUser: originalCaller,
+            caller: originalCaller,
+            receiver: originalReceiver,
             type,
             direction: "incoming",
             duration: duration || 0,
@@ -1754,7 +1763,8 @@ io.on("connection", (socket) => {
         const roomId = [from, to].sort().join("-")
 
         activeCalls[roomId] = {
-            users: [from]
+            users: [from],
+            originalCaller: from // 🔥 Track who initiated the call
         }
 
         const subs = await Subscription.find({ email: to })
@@ -1788,7 +1798,8 @@ io.on("connection", (socket) => {
         }
         activeCalls[groupId] = {
             type,
-            users: [from]
+            users: [from],
+            originalCaller: from // 🔥 Track who started the group call
         }
 
         group.members.forEach(async member => {
