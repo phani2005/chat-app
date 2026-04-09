@@ -359,3 +359,55 @@ body {
     }
 
 }
+
+/* ================= SELECT BAR (CALLINFO) ================= */
+
+.select-bar {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.select-bar .danger-btn {
+    background: linear-gradient(135deg, #ff416c, #ff4b2b);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.select-bar .danger-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
+}
+
+.select-bar .cancel-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.select-bar .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.call-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #00c6ff;
+    margin-right: 10px;
+    cursor: pointer;
+}

@@ -29,10 +29,16 @@
             <div class="menu">
                 ⋮
                 <div class="dropdown">
-                    <p onclick="clearCalls()">Delete All</p>
+                    <p onclick="enterSelectMode()">Select</p>
+                    <p onclick="clearAllCalls()">Delete All</p>
                 </div>
             </div>
 
+        </div>
+
+        <div id="selectBar" style="display:none;" class="select-bar">
+            <button id="deleteBtn" class="danger-btn">Delete</button>
+            <button id="cancelBtn" class="cancel-btn">Cancel</button>
         </div>
 
         <div id="callList"></div>
@@ -42,6 +48,9 @@
     <script>
 
         const user = localStorage.getItem("loggedUser")
+        let selectMode = false
+        let selectedCalls = new Set()
+
         function goBack() {
             window.location.href = "/main.html"
         }
@@ -51,25 +60,49 @@
             const res = await fetch(`/calls/${user}`)
 
             const calls = await res.json()
-            console.log("Calls: ",calls)
+            console.log("Calls: ", calls)
 
             const container = document.getElementById("callList")
 
             container.innerHTML = ""
+
+            if (calls.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:gray;">
+                        <i class="fa-solid fa-phone-slash" style="font-size:40px; margin-bottom:15px; opacity:0.5;"></i>
+                        <p>No call history</p>
+                    </div>
+                `
+                return
+            }
 
             calls.forEach(call => {
 
                 const div = document.createElement("div")
 
                 div.className = "contact"
-                const isOutgoing = call.caller === user
+                div.setAttribute("data-id", call._id)
+
                 const iconColor = call.missed ? "red" : "white"
+
+                // Direction arrow icon
+                let directionIcon = ""
+                if (call.missed) {
+                    directionIcon = `<i class="fa-solid fa-arrow-down" style="color:red; font-size:10px; margin-right:4px; transform:rotate(-45deg);"></i>`
+                } else if (call.direction === "outgoing") {
+                    directionIcon = `<i class="fa-solid fa-arrow-up" style="color:#25D366; font-size:10px; margin-right:4px; transform:rotate(45deg);"></i>`
+                } else {
+                    directionIcon = `<i class="fa-solid fa-arrow-down" style="color:#00c6ff; font-size:10px; margin-right:4px; transform:rotate(-45deg);"></i>`
+                }
+
                 div.innerHTML = `
 
 ${call.profileimage ?
                         `<img src="${call.profileimage}">`
                         :
-                        `<img src="/profilephotodefault.png">`
+                        call.isGroup
+                            ? `<div class="group-icon"><i class="fa-solid fa-users"></i></div>`
+                            : `<img src="/profilephotodefault.png">`
                     }
 
 <div class="contact-info">
@@ -78,21 +111,23 @@ ${call.profileimage ?
 
 <div class="timestamp">
 
+${directionIcon}
+
 ${call.type === "voice"
-    ? `<i class="fa-solid fa-phone" style="color:${iconColor}"></i>`
-    : `<i class="fa-solid fa-video" style="color:${iconColor}"></i>`}
+                        ? `<i class="fa-solid fa-phone" style="color:${iconColor}; font-size:12px;"></i>`
+                        : `<i class="fa-solid fa-video" style="color:${iconColor}; font-size:12px;"></i>`}
 
 ${call.missed
-    ? `<span style="color:red;">Missed</span>`
-    : call.direction === "outgoing"
-        ? "Outgoing"
-        : "Incoming"}
-• ${formatDuration(call.duration)}
+                        ? `<span style="color:red;">Missed</span>`
+                        : call.direction === "outgoing"
+                            ? `<span style="color:#25D366;">Outgoing</span>`
+                            : `<span style="color:#00c6ff;">Incoming</span>`}
+${!call.missed && call.duration > 0 ? `• ${formatDuration(call.duration)}` : ""}
 
 <br>
 
 <span style="font-size:12px;color:gray;">
-${new Date(call.time).toLocaleString()}
+${formatTime(call.time)}
 </span>
 
 </div>
@@ -100,6 +135,22 @@ ${new Date(call.time).toLocaleString()}
 </div>
 
 `
+
+                // Click handler - open chat or toggle checkbox
+                div.addEventListener("click", () => {
+
+                    if (selectMode) {
+                        toggleCallSelection(call._id, div)
+                        return
+                    }
+
+                    // Open chat with this contact
+                    localStorage.setItem("chatWith", call.otherUser)
+                    localStorage.setItem("chatName", call.name)
+                    localStorage.setItem("isGroup", call.isGroup || false)
+
+                    window.location.href = `/chat.html?from=${call.otherUser}&isGroup=${call.isGroup || false}&name=${call.name}&openChat=true`
+                })
 
                 container.appendChild(div)
 
@@ -109,12 +160,123 @@ ${new Date(call.time).toLocaleString()}
 
         function formatDuration(sec) {
 
-            let m = Math.floor(sec / 60)
+            if (!sec || sec <= 0) return ""
 
+            let m = Math.floor(sec / 60)
             let s = sec % 60
 
             return m + ":" + String(s).padStart(2, "0")
 
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp)
+            const now = new Date()
+            const diff = now - date
+
+            // Today
+            if (date.toDateString() === now.toDateString()) {
+                return "Today, " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+
+            // Yesterday
+            const yesterday = new Date(now)
+            yesterday.setDate(yesterday.getDate() - 1)
+            if (date.toDateString() === yesterday.toDateString()) {
+                return "Yesterday, " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+
+            return date.toLocaleDateString() + ", " + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+
+        // ================= SELECT MODE =================
+
+        function enterSelectMode() {
+            selectMode = true
+            selectedCalls.clear()
+
+            document.getElementById("selectBar").style.display = "flex"
+
+            // Add checkboxes to all call items
+            document.querySelectorAll(".contact").forEach(div => {
+                const checkbox = document.createElement("input")
+                checkbox.type = "checkbox"
+                checkbox.className = "call-checkbox"
+                checkbox.addEventListener("click", (e) => {
+                    e.stopPropagation()
+                    const id = div.getAttribute("data-id")
+                    toggleCallSelection(id, div)
+                    checkbox.checked = selectedCalls.has(id)
+                })
+                div.prepend(checkbox)
+            })
+        }
+
+        function exitSelectMode() {
+            selectMode = false
+            selectedCalls.clear()
+
+            document.getElementById("selectBar").style.display = "none"
+
+            // Remove all checkboxes
+            document.querySelectorAll(".call-checkbox").forEach(cb => cb.remove())
+        }
+
+        function toggleCallSelection(id, div) {
+            if (selectedCalls.has(id)) {
+                selectedCalls.delete(id)
+            } else {
+                selectedCalls.add(id)
+            }
+
+            // Update checkbox state
+            const cb = div.querySelector(".call-checkbox")
+            if (cb) {
+                cb.checked = selectedCalls.has(id)
+            }
+        }
+
+        // Delete selected calls
+        document.getElementById("deleteBtn").addEventListener("click", async () => {
+
+            if (selectedCalls.size === 0) {
+                alert("No calls selected")
+                return
+            }
+
+            await fetch("/delete-calls", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    callIds: Array.from(selectedCalls),
+                    userEmail: user
+                })
+            })
+
+            exitSelectMode()
+            loadCalls()
+        })
+
+        // Cancel selection
+        document.getElementById("cancelBtn").addEventListener("click", () => {
+            exitSelectMode()
+        })
+
+        // Clear all calls
+        async function clearAllCalls() {
+
+            const confirmDelete = confirm("Delete all call history?")
+            if (!confirmDelete) return
+
+            await fetch("/clear-calls", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userEmail: user
+                })
+            })
+
+            loadCalls()
         }
 
         loadCalls()

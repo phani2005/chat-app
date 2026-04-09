@@ -108,15 +108,20 @@ const messageSchema = new mongoose.Schema({
 
 const Message = mongoose.model("Message", messageSchema)
 const callSchema = new mongoose.Schema({
-    caller: String,
-    receiver: String,
-    type: String, // voice or video
-    direction: String, // outgoing or incoming
+    owner: String,        // which user this record belongs to
+    otherUser: String,    // the other party (email or groupId)
+    caller: String,       // original caller email
+    receiver: String,     // original receiver email (or groupId)
+    type: String,         // voice or video
+    direction: String,    // outgoing or incoming
     duration: Number,
     missed: {
         type: Boolean,
         default: false
     },
+    isGroup: { type: Boolean, default: false },
+    groupId: String,
+    deletedFor: [String],
     timestamp: { type: Date, default: Date.now }
 })
 
@@ -544,11 +549,30 @@ app.get("/conversations/:email", async (req, res) => {
             isGroup: true
         })
     }
-    // 🔥 SORT BY LATEST MESSAGE TIME
+    // 🔥 SORT BY LATEST MESSAGE OR CALL TIME
+    for (let item of result) {
+        // Find latest call for this contact
+        const contactId = String(item.email)
+        const latestCall = await Call.findOne({
+            owner: userEmail,
+            otherUser: contactId,
+            deletedFor: { $ne: userEmail }
+        }).sort({ timestamp: -1 })
+
+        if (latestCall) {
+            item.lastCallTime = latestCall.timestamp
+        }
+    }
+
     result.sort((a, b) => {
 
-        const timeA = a.lastMessageTime ? new Date(a.lastMessageTime) : 0
-        const timeB = b.lastMessageTime ? new Date(b.lastMessageTime) : 0
+        const msgTimeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0
+        const msgTimeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0
+        const callTimeA = a.lastCallTime ? new Date(a.lastCallTime).getTime() : 0
+        const callTimeB = b.lastCallTime ? new Date(b.lastCallTime).getTime() : 0
+
+        const timeA = Math.max(msgTimeA, callTimeA)
+        const timeB = Math.max(msgTimeB, callTimeB)
 
         return timeB - timeA
     })
@@ -1314,6 +1338,9 @@ io.on("connection", (socket) => {
 
             const groupName = group.name
 
+            // 🔥 Track who connected before cleanup
+            const connectedUsers = call ? [...call.users] : []
+
             // 🔥 CASE 1: NO ONE JOINED (MISSED GROUP CALL)
             if (!call || call.users.length <= 1) {
 
@@ -1338,6 +1365,23 @@ io.on("connection", (socket) => {
                     })
                 }
 
+                // 🔥 Save call records for all members (all missed)
+                for (let member of group.members) {
+                    await Call.create({
+                        owner: member,
+                        otherUser: groupId,
+                        caller: from,
+                        receiver: groupId,
+                        type,
+                        direction: member === from ? "outgoing" : "incoming",
+                        duration: 0,
+                        missed: true,
+                        isGroup: true,
+                        groupId: groupId,
+                        timestamp: new Date()
+                    })
+                }
+
                 delete activeCalls[groupId]
                 return
             }
@@ -1348,9 +1392,28 @@ io.on("connection", (socket) => {
             // 🔥 CASE 2: ALL USERS LEFT → FINAL END
             if (call.users.length === 0) {
 
+                // 🔥 Save call records for each group member
+                for (let member of group.members) {
+                    const didConnect = connectedUsers.includes(member)
+                    await Call.create({
+                        owner: member,
+                        otherUser: groupId,
+                        caller: from,
+                        receiver: groupId,
+                        type,
+                        direction: member === from ? "outgoing" : "incoming",
+                        duration: didConnect ? duration : 0,
+                        missed: !didConnect,
+                        isGroup: true,
+                        groupId: groupId,
+                        timestamp: new Date()
+                    })
+                }
+
                 for (let member of group.members) {
 
                     if (member === from) continue
+                    if (connectedUsers.includes(member)) continue
                     const senderName = await getDisplayName(member, from)
 
                     await sendCallNotification({
@@ -1392,8 +1455,12 @@ io.on("connection", (socket) => {
         const roomId = [from, to].sort().join("-")
         const call = activeCalls[roomId]
 
-        // 🔥 CASE: NOT CONNECTED → MISSED CALL
-        if (!call || !call.users.includes(to)) {
+        // 🔥 Determine if call was connected
+        const wasConnected = call && call.users.includes(to)
+        const isMissed = !wasConnected
+
+        // 🔥 CASE: NOT CONNECTED → MISSED CALL notification
+        if (isMissed) {
 
             const senderName = await getDisplayName(to, from)
 
@@ -1414,11 +1481,30 @@ io.on("connection", (socket) => {
 
         delete activeCalls[roomId]
 
+        // 🔥 Save TWO records — one for each user
+        // Caller's record (outgoing)
         await Call.create({
+            owner: from,
+            otherUser: to,
             caller: from,
             receiver: to,
             type,
-            duration,
+            direction: "outgoing",
+            duration: duration || 0,
+            missed: isMissed,
+            timestamp: new Date()
+        })
+
+        // Receiver's record (incoming)
+        await Call.create({
+            owner: to,
+            otherUser: from,
+            caller: from,
+            receiver: to,
+            type,
+            direction: "incoming",
+            duration: duration || 0,
+            missed: isMissed,
             timestamp: new Date()
         })
     })
@@ -1437,19 +1523,36 @@ io.on("connection", (socket) => {
                 const senderName = await getDisplayName(member, from)
 
                 await sendCallNotification({
-                    toUsers: [member],   // ✅ ONE USER AT A TIME
+                    toUsers: [member],
                     title: groupName,
                     body: `❌ Missed ${type === "video" ? "Video" : "Voice"} call from ${senderName}`,
                     data: {
                         from: from,
                         groupId: to,
-                        callerName: senderName,      // groupId
+                        callerName: senderName,
                         type,
                         status: "ended",
                         isGroup: true,
                         title: groupName,
-                        tag: to        // 🔥 SAME TAG → replace
+                        tag: to
                     }
+                })
+            }
+
+            // 🔥 Save missed group call records for all members
+            for (let member of group.members) {
+                await Call.create({
+                    owner: member,
+                    otherUser: to,
+                    caller: from,
+                    receiver: to,
+                    type,
+                    direction: member === from ? "outgoing" : "incoming",
+                    duration: 0,
+                    missed: true,
+                    isGroup: true,
+                    groupId: to,
+                    timestamp: new Date()
                 })
             }
 
@@ -1472,21 +1575,54 @@ io.on("connection", (socket) => {
             }
         })
 
+        // 🔥 Save TWO missed call records
         await Call.create({
+            owner: from,
+            otherUser: to,
             caller: from,
             receiver: to,
             type,
+            direction: "outgoing",
             duration: 0,
-            missed: true
+            missed: true,
+            timestamp: new Date()
+        })
+
+        await Call.create({
+            owner: to,
+            otherUser: from,
+            caller: from,
+            receiver: to,
+            type,
+            direction: "incoming",
+            duration: 0,
+            missed: true,
+            timestamp: new Date()
         })
 
     })
     socket.on("missed-call", async ({ to, from, type }) => {
 
+        // 🔥 Save TWO missed call records
         await Call.create({
+            owner: from,
+            otherUser: to,
             caller: from,
             receiver: to,
             type: type,
+            direction: "outgoing",
+            duration: 0,
+            missed: true,
+            timestamp: new Date()
+        })
+
+        await Call.create({
+            owner: to,
+            otherUser: from,
+            caller: from,
+            receiver: to,
+            type: type,
+            direction: "incoming",
             duration: 0,
             missed: true,
             timestamp: new Date()
@@ -1509,6 +1645,31 @@ io.on("connection", (socket) => {
                 status: "ended",
                 isGroup: false
             }
+        })
+
+        // 🔥 Save TWO missed call records
+        await Call.create({
+            owner: to,
+            otherUser: from,
+            caller: to,
+            receiver: from,
+            type: callType,
+            direction: "outgoing",
+            duration: 0,
+            missed: true,
+            timestamp: new Date()
+        })
+
+        await Call.create({
+            owner: from,
+            otherUser: to,
+            caller: to,
+            receiver: from,
+            type: callType,
+            direction: "incoming",
+            duration: 0,
+            missed: true,
+            timestamp: new Date()
         })
 
         const callerSockets = onlineUsers[to]
@@ -1848,31 +2009,21 @@ app.get("/messages/:user1/:chatId", async (req, res) => {
 app.get("/calls/:email", async (req, res) => {
 
     const email = req.params.email
+    const viewer = await User.findOne({ email })
 
     const calls = await Call.find({
-        $or: [
-            { caller: email },
-            { receiver: email }
-        ]
+        owner: email,
+        deletedFor: { $ne: email }
     }).sort({ timestamp: -1 })
 
     const result = []
 
     for (const call of calls) {
 
-        let direction = ""
-        let other = ""
-
-        if (call.caller === email) {
-            direction = "outgoing"
-            other = call.receiver
-        } else {
-            direction = "incoming"
-            other = call.caller
-        }
-
+        const other = call.otherUser
         let name = other
         let profileimage = null
+        let isGroupCall = call.isGroup || false
 
         let group = null
 
@@ -1890,20 +2041,31 @@ app.get("/calls/:email", async (req, res) => {
             const user = await User.findOne({ email: other })
 
             if (user) {
-                name = user.username
+                // Check saved contact name
+                let displayName = user.username
+                if (viewer) {
+                    const savedContact = viewer.contacts.find(c => c.email === other)
+                    if (savedContact) {
+                        displayName = savedContact.name
+                    }
+                }
+                name = displayName
                 profileimage = user.profileimage
             }
 
         }
 
         result.push({
+            _id: call._id,
             name: name,
+            otherUser: other,
             profileimage: profileimage,
             type: call.type,
-            direction: direction,
+            direction: call.direction,
             duration: call.duration,
             time: call.timestamp,
-            missed: call.missed
+            missed: call.missed,
+            isGroup: isGroupCall
         })
 
     }
@@ -1911,6 +2073,29 @@ app.get("/calls/:email", async (req, res) => {
     res.json(result)
 
 })
+app.post("/delete-calls", async (req, res) => {
+
+    const { callIds, userEmail } = req.body
+
+    await Call.updateMany(
+        { _id: { $in: callIds } },
+        { $addToSet: { deletedFor: userEmail } }
+    )
+
+    res.json({ success: true })
+})
+app.post("/clear-calls", async (req, res) => {
+
+    const { userEmail } = req.body
+
+    await Call.updateMany(
+        { owner: userEmail },
+        { $addToSet: { deletedFor: userEmail } }
+    )
+
+    res.json({ success: true })
+})
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server is running at localhost ${PORT}`)
 })
+
