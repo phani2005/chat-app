@@ -379,22 +379,39 @@
         /* ---------------- INCOMING CALL ---------------- */
 
         socket.on("incoming-call", async ({ from, offer, type }) => {
+
+            if (type !== "voice") return
+
+            console.log("📞 Incoming call from:", from)
+
+            // 🔥 If we are the RECEIVER (opened from notification or call page) → directly answer
+            if (callType === "receiver") {
+                if (offer) {
+                    console.log("✅ Receiver got offer → answering directly")
+                    receiver = from
+                    localStorage.setItem("chatWith", from)
+                    loadCallerInfo()
+
+                    await initLocalStream()
+                    createPeer(from, false, offer)
+                }
+                return
+            }
+
+            // 🔥 For CALLER — handle incoming-call (shouldn't normally happen)
             if (!callConnected) {
                 startRinging()
             }
 
-            if (type !== "voice") return
-
-
-            console.log("📞 Incoming call from:", from)
             const currentChat = localStorage.getItem("chatWith")
             console.log("current chat is: ", currentChat)
 
             // ❌ IF NOT SAME CHAT → DO NOTHING (USE NOTIFICATION)
             if (currentChat !== from) {
-                alert("❌ Not active chat → skip popup")
+                console.log("❌ Not active chat → skip popup")
                 return
             }
+
             // ✅ VERY IMPORTANT: store real caller
             incomingCaller = from
 
@@ -409,7 +426,6 @@
 
             // 🔥 IF OFFER EXISTS → DIRECT CONNECT (notification case)
             if (offer) {
-    
                 await initLocalStream()
                 createPeer(from, false, offer)
                 return
@@ -544,6 +560,17 @@
             window.location.href =
                 `/chat.html?from=${receiver}&isGroup=${isGroup}&name=${name}&openChat=true`
         }
+
+        /* ---------------- RESEND OFFER (for notification click) ---------------- */
+
+        socket.on("resend-offer", async ({ to }) => {
+
+            console.log("📡 resend-offer request for:", to)
+
+            // 🔥 We are the CALLER — create a new peer for the joining receiver
+            await initLocalStream()
+            createPeer(to, true)
+        })
 
         /* ---------------- START FLOW ---------------- */
 

@@ -1166,7 +1166,7 @@ io.on("connection", (socket) => {
     // User calling someone
     socket.on("call-user", async ({ to, offer, from, type, isGroupCall, isInitialCall }) => {
         console.log("call-user function from server")
-        console.log("call-user to: ", to, " from: ", from, " type: ", type, " offer: ", offer)
+        console.log("call-user to: ", to, " from: ", from, " type: ", type)
 
         const receiverSockets = onlineUsers[to]
         console.log("call-user receiversockets: ", receiverSockets)
@@ -1180,37 +1180,7 @@ io.on("connection", (socket) => {
                 })
             })
         }
-        if (isGroupCall || type === "video") return
-        let callTypeText = type === "video" ? "📹 Video Call" : "📞 Voice Call"
-
-        const isInSameChat =
-            activeChats[to] &&
-            activeChats[to].chatId === from &&
-            activeChats[to].isGroup === false
-
-        if (!isInSameChat) {
-
-            const subs = await Subscription.find({ email: to })
-            const senderName = await getDisplayName(to, from)
-
-            subs.forEach(s => {
-                webpush.sendNotification(
-                    s.sub,
-                    JSON.stringify({
-                        title: "Incoming Call",
-                        body: callTypeText + " from " + senderName,
-                        url: type === "video"
-                            ? "/videocall.html"
-                            : "/voicechat.html",
-                        from: from,
-                        type: type,
-                        isGroup: false
-                    })
-                ).catch(err => {
-                    console.log("❌ Push error:", err.message)
-                })
-            })
-        }
+        // 🔥 NO push notification here — voice-call-start / video-call-start already handle it
     })
     // Receiver answering call
     socket.on("answer-call", ({ to, answer }) => {

@@ -363,17 +363,29 @@
             if (type !== "video") return
 
             console.log("📞 Incoming VIDEO call from:", from)
+
+            // 🔥 If we are the RECEIVER (opened from notification or call page) → directly answer
+            if (callType === "receiver") {
+                if (offer) {
+                    console.log("✅ Receiver got offer → answering directly")
+                    receiver = from
+                    localStorage.setItem("chatWith", from)
+                    loadCallerInfo()
+
+                    await initLocalStream()
+                    createPeer(from, false, offer)
+                }
+                return
+            }
+
+            // 🔥 For CALLER context (shouldn't normally get incoming-call)
             receiver = from
             localStorage.setItem("chatWith", from)
-
-            // ✅ Update caller info display
             loadCallerInfo()
 
-            // ✅ If offer exists → create non-initiator peer (answer the call)
             if (offer) {
                 await initLocalStream()
                 createPeer(from, false, offer)
-                return
             }
         })
 
@@ -614,6 +626,17 @@
                 btn.innerHTML = `<i class="fa-solid fa-video"></i>`
             }
         }
+
+        /* ---------------- RESEND OFFER (for notification click) ---------------- */
+
+        socket.on("resend-offer", async ({ to }) => {
+
+            console.log("📡 resend-offer request for:", to)
+
+            // 🔥 We are the CALLER — create a new peer for the joining receiver
+            await initLocalStream()
+            createPeer(to, true)
+        })
 
         /* ---------------- START FLOW ---------------- */
 
