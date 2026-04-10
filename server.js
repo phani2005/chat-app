@@ -1391,6 +1391,9 @@ io.on("connection", (socket) => {
                 return
             }
 
+            const callStart = call?.startTime || Date.now()
+            const finalDuration = Math.floor((Date.now() - callStart) / 1000)
+
             // 🔥 REMOVE USER FROM ACTIVE CALL
             call.users = call.users.filter(u => u !== from)
 
@@ -1400,8 +1403,8 @@ io.on("connection", (socket) => {
                 // 🔥 Save call records for each group member
                 for (let member of group.members) {
                     // const didConnect = connectedUsers.includes(member)
-                    const callStart = call?.startTime || Date.now()
-                    const finalDuration = Math.floor((Date.now() - callStart) / 1000)
+                    // const callStart = call?.startTime || Date.now()
+                    // const finalDuration = Math.floor((Date.now() - callStart) / 1000)
                     const didConnect = connectedUsers.includes(member) || member === groupCaller
                     await Call.create({
                         owner: member,
