@@ -1346,10 +1346,10 @@ io.on("connection", (socket) => {
             // 🔥 Track who connected before cleanup
             const connectedUsers = call ? [...call.users] : []
 
-            console.log("connected users from server: ",connectedUsers)
+            console.log("connected users from server: ", connectedUsers)
 
             // 🔥 CASE 1: NO ONE JOINED (MISSED GROUP CALL)
-            if (!call || call.users.length <= 1) {
+            if (!call || call.joinedUsers.length <= 1) {
 
                 for (let member of group.members) {
 
@@ -1819,6 +1819,7 @@ io.on("connection", (socket) => {
         activeCalls[groupId] = {
             type,
             users: [from],
+            joinedUsers: [from],
             startTime: Date.now(),
             originalCaller: from // 🔥 Track who started the group call
         }
@@ -1919,6 +1920,9 @@ io.on("connection", (socket) => {
 
         // ✅ CHECK ACTIVE CALL
         const call = activeCalls[groupId]
+        if (!call.joinedUsers.includes(user)) {
+            call.joinedUsers.push(user)
+        }
 
         if (call) {
 
