@@ -1392,10 +1392,10 @@ io.on("connection", (socket) => {
             }
 
             // 🔥 REMOVE USER FROM ACTIVE CALL
-            // call.users = call.users.filter(u => u !== from)
+            call.users = call.users.filter(u => u !== from)
 
             // 🔥 CASE 2: ALL USERS LEFT → FINAL END
-            if (call.users.length === 1 && call.users.includes(from)) {
+            if (call.users.length === 0) {
 
                 // 🔥 Save call records for each group member
                 for (let member of group.members) {
@@ -1410,16 +1410,12 @@ io.on("connection", (socket) => {
                         direction: member === groupCaller ? "outgoing" : "incoming",
                         duration: didConnect ? duration : 0,
                         // missed: !didConnect,
-                        // missed: duration === 0,
-                        missed: !connectedUsers.includes(member),
+                        missed: duration === 0,
                         isGroup: true,
                         groupId: groupId,
                         timestamp: new Date()
                     })
                 }
-                delete activeCalls[groupId]
-                return
-                call.users = call.users.filter(u => u !== from)
 
                 for (let member of group.members) {
 
@@ -2033,12 +2029,12 @@ app.get("/calls/:email", async (req, res) => {
     //     deletedFor: { $ne: email }
     // }).sort({ timestamp: -1 })
     const calls = await Call.find({
-        deletedFor: { $ne: email },
-        $or: [
-            { owner: email },              // ✅ new system
-            { caller: email },             // ✅ old data
-            { receiver: email }            // ✅ old data
-        ]
+    deletedFor: { $ne: email },
+    $or: [
+        { owner: email },              // ✅ new system
+        { caller: email },             // ✅ old data
+        { receiver: email }            // ✅ old data
+    ]
     }).sort({ timestamp: -1 })
 
     const result = []
