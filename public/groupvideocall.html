@@ -185,8 +185,15 @@
         const ringtone = document.getElementById("ringtone")
         let callTimeout
         let isConnected = false
+        let seconds = 0
+        let timerInterval
 
         socket.emit("register-user", loggedUser)
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                seconds++
+            }, 1000)
+        }
 
         /* START CALL */
         async function startCall() {
@@ -309,6 +316,7 @@
                     isConnected = true
                     stopRinging()
                     clearTimeout(callTimeout)
+                    if (!timerInterval) startTimer()
                 }
 
                 const user = groupMembers.find(m => m.email === userEmail)
@@ -535,7 +543,7 @@
                 to: groupId,
                 from: loggedUser,
                 type: "video",
-                duration: 0,
+                duration: seconds,
                 isGroup: true
             })
 
