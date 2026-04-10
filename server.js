@@ -1399,7 +1399,8 @@ io.on("connection", (socket) => {
 
                 // 🔥 Save call records for each group member
                 for (let member of group.members) {
-                    const didConnect = connectedUsers.includes(member)
+                    // const didConnect = connectedUsers.includes(member)
+                    const didConnect = connectedUsers.includes(member) || member === groupCaller
                     await Call.create({
                         owner: member,
                         otherUser: groupId,
@@ -1408,7 +1409,8 @@ io.on("connection", (socket) => {
                         type,
                         direction: member === groupCaller ? "outgoing" : "incoming",
                         duration: didConnect ? duration : 0,
-                        missed: !didConnect,
+                        // missed: !didConnect,
+                        missed: duration === 0,
                         isGroup: true,
                         groupId: groupId,
                         timestamp: new Date()
@@ -2117,4 +2119,3 @@ app.post("/clear-calls", async (req, res) => {
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server is running at localhost ${PORT}`)
 })
-
