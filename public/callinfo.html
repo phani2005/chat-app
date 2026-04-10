@@ -36,8 +36,17 @@
         <div id="callList"></div>
 
     </div>
-
+    <script src="/socket.io/socket.io.js"></script>
     <script>
+        const socket = io()
+
+        socket.emit("register-user", user)
+
+        // 🔥 listen for new call log
+        socket.on("new-call-log", () => {
+            console.log("🔄 New call log received")
+            loadCalls()
+        })
 
         const user = localStorage.getItem("loggedUser")
         function goBack() {
