@@ -1400,6 +1400,8 @@ io.on("connection", (socket) => {
                 // 🔥 Save call records for each group member
                 for (let member of group.members) {
                     // const didConnect = connectedUsers.includes(member)
+                    const callStart = call?.startTime || Date.now()
+                    const finalDuration = Math.floor((Date.now() - callStart) / 1000)
                     const didConnect = connectedUsers.includes(member) || member === groupCaller
                     await Call.create({
                         owner: member,
@@ -1408,9 +1410,9 @@ io.on("connection", (socket) => {
                         receiver: groupId,
                         type,
                         direction: member === groupCaller ? "outgoing" : "incoming",
-                        duration: didConnect ? duration : 0,
-                        // missed: !didConnect,
-                        missed: duration === 0,
+                        duration: didConnect ? finalDuration : 0,
+                        missed: !didConnect,
+                        // missed: duration === 0,
                         isGroup: true,
                         groupId: groupId,
                         timestamp: new Date()
@@ -1517,6 +1519,17 @@ io.on("connection", (socket) => {
             duration: duration || 0,
             missed: isMissed,
             timestamp: new Date()
+        })
+        // 🔥 notify both users
+        const usersToNotify = [originalCaller, originalReceiver]
+
+        usersToNotify.forEach(u => {
+            const sockets = onlineUsers[u]
+            if (sockets) {
+                sockets.forEach(id => {
+                    io.to(id).emit("new-call-log")
+                })
+            }
         })
     })
     socket.on("call-timeout", async ({ from, to, type, isGroup }) => {
@@ -1801,6 +1814,7 @@ io.on("connection", (socket) => {
         activeCalls[groupId] = {
             type,
             users: [from],
+            startTime: Date.now(),
             originalCaller: from // 🔥 Track who started the group call
         }
 
