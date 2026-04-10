@@ -1346,6 +1346,8 @@ io.on("connection", (socket) => {
             // 🔥 Track who connected before cleanup
             const connectedUsers = call ? [...call.users] : []
 
+            console.log("connected users from server: ",connectedUsers)
+
             // 🔥 CASE 1: NO ONE JOINED (MISSED GROUP CALL)
             if (!call || call.users.length <= 1) {
 
