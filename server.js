@@ -1344,7 +1344,7 @@ io.on("connection", (socket) => {
             const groupCaller = call && call.originalCaller ? call.originalCaller : from
 
             // 🔥 Track who connected before cleanup
-            const connectedUsers = call ? [...call.users] : []
+            const connectedUsers = call ? [...call.joinedUsers] : []
 
             console.log("connected users from server: ", connectedUsers)
 
@@ -1920,9 +1920,7 @@ io.on("connection", (socket) => {
 
         // ✅ CHECK ACTIVE CALL
         const call = activeCalls[groupId]
-        if (!call.joinedUsers.includes(user)) {
-            call.joinedUsers.push(user)
-        }
+
 
         if (call) {
 
@@ -1944,6 +1942,16 @@ io.on("connection", (socket) => {
             if (!call.users.includes(user)) {
                 call.users.push(user)
             }
+        }
+
+        if (!call) {
+            console.log("❌ No active call found")
+            return
+        }
+
+        // ✅ SAFE CHECK
+        if (!call.joinedUsers.includes(user)) {
+            call.joinedUsers.push(user)
         }
 
 
