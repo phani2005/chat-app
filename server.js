@@ -2024,18 +2024,18 @@ app.get("/calls/:email", async (req, res) => {
     const email = req.params.email
     const viewer = await User.findOne({ email })
 
-    // const calls = await Call.find({
-    //     owner: email,
-    //     deletedFor: { $ne: email }
-    // }).sort({ timestamp: -1 })
     const calls = await Call.find({
-    deletedFor: { $ne: email },
-    $or: [
-        { owner: email },              // ✅ new system
-        { caller: email },             // ✅ old data
-        { receiver: email }            // ✅ old data
-    ]
+        owner: email,
+        deletedFor: { $ne: email }
     }).sort({ timestamp: -1 })
+    // const calls = await Call.find({
+    // deletedFor: { $ne: email },
+    // $or: [
+    //     { owner: email },              // ✅ new system
+    //     { caller: email },             // ✅ old data
+    //     { receiver: email }            // ✅ old data
+    // ]
+    // }).sort({ timestamp: -1 })
 
     const result = []
 
@@ -2055,7 +2055,7 @@ app.get("/calls/:email", async (req, res) => {
         if (group) {
 
             name = group.name
-            profileimage = group.profileimage
+            profileimage = group.profileimage || "/groupdefault.png"
 
         } else {
 
