@@ -39,7 +39,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io()
-
+        const user = localStorage.getItem("loggedUser")
         socket.emit("register-user", user)
 
         // 🔥 listen for new call log
@@ -48,7 +48,7 @@
             loadCalls()
         })
 
-        const user = localStorage.getItem("loggedUser")
+        // const user = localStorage.getItem("loggedUser")
         function goBack() {
             window.location.href = "/main.html"
         }
