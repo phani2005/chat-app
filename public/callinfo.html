@@ -198,9 +198,41 @@
                 return
             }
 
-            calls.forEach(call => {
+            for (const call of calls) {
 
                 const div = document.createElement("div")
+                let displayName = call.name
+                let profileImg = call.profileimage || "/profilephotodefault.png"
+
+                try {
+
+                    // 🔥 If not group → re-fetch latest name (safe override)
+                    if (!call.isGroup) {
+
+                        const resContacts = await fetch(`/getcontacts/${user}`)
+                        const contacts = await resContacts.json()
+
+                        const matched = contacts.find(c => c.email === call.otherUser)
+
+                        if (matched) {
+                            displayName = matched.name
+                        }
+
+                        const resProfile = await fetch(`/get-profile/${call.otherUser}`)
+                        const data = await resProfile.json()
+
+                        if (!matched && data.username) {
+                            displayName = data.username
+                        }
+
+                        if (data.profileimage) {
+                            profileImg = data.profileimage
+                        }
+                    }
+
+                } catch (err) {
+                    console.log("Profile fetch error", err)
+                }
 
                 div.className = "contact"
                 div.setAttribute("data-id", call._id)
@@ -219,17 +251,14 @@
 
                 div.innerHTML = `
 
-${call.profileimage ?
-                        `<img src="${call.profileimage}">`
-                        :
-                        call.isGroup
-                            ? `<div class="group-icon"><i class="fa-solid fa-users"></i></div>`
-                            : `<img src="/profilephotodefault.png">`
+${call.isGroup
+                        ? `<div class="group-icon"><i class="fa-solid fa-users"></i></div>`
+                        : `<img src="${profileImg || "/profilephotodefault.png"}">`
                     }
 
 <div class="contact-info">
 
-<strong>${call.name}</strong>
+<strong>${displayName}</strong>
 
 <div class="timestamp">
 
@@ -275,8 +304,8 @@ ${formatTime(call.timestamp)}
                 })
 
                 container.appendChild(div)
-
-            })
+                //marking
+            }
 
         }
 
