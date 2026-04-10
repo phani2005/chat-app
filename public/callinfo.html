@@ -102,9 +102,15 @@
             //                 container.appendChild(div)
 
             //             })
+            const seen = new Set()
             calls
                 .sort((a, b) => new Date(b.time) - new Date(a.time)) // latest first
                 .forEach(call => {
+
+                    const key = call.otherUser + call.time
+
+                    if (seen.has(key)) return
+                    seen.add(key)
 
                     const div = document.createElement("div")
                     div.className = "contact"
@@ -115,7 +121,9 @@
                     let imgHTML = ""
 
                     if (call.isGroup) {
-                        imgHTML = `<div class="group-icon"><i class="fa-solid fa-users"></i></div>`
+                        imgHTML = call.profileimage
+                            ? `<img src="${call.profileimage}">`
+                            : `<div class="group-icon"><i class="fa-solid fa-users"></i></div>`
                     } else {
                         imgHTML = `<img src="${call.profileimage || "/profilephotodefault.png"}">`
                     }
