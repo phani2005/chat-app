@@ -55,10 +55,13 @@ try {
 }
 const onlineUsers = {}//online users object
 function notifyCallHistoryUpdate(usersToNotify) {
+    console.log("📢 Notifying:", usersToNotify)
+    console.log("📢 Online Users:", onlineUsers)
     usersToNotify.forEach(u => {
         const sockets = onlineUsers[u]
         if (sockets) {
             sockets.forEach(id => {
+                console.log("✅ Emitting to:", id)
                 io.to(id).emit("new-call-log")
             })
         }
