@@ -40,7 +40,15 @@
     <script>
         const socket = io()
         const user = localStorage.getItem("loggedUser")
-        socket.emit("register-user", user)
+        // socket.emit("register-user", user)
+        socket.on("connect", () => {
+            console.log("connected register user: ",user)
+            socket.emit("register-user", user)
+        })
+        window.addEventListener("focus", () => {
+            console.log("👀 Page focused → reload calls")
+            loadCalls()
+        })
 
         // 🔥 listen for new call log
         socket.on("new-call-log", () => {
@@ -55,7 +63,7 @@
 
         async function loadCalls() {
 
-            const res = await fetch(`/calls/${user}`)
+            const res = await fetch(`/calls/${user}`, { cache: "no-store" })
 
             const calls = await res.json()
             console.log("Calls: ", calls)
@@ -116,7 +124,8 @@
                 .sort((a, b) => new Date(b.time) - new Date(a.time)) // latest first
                 .forEach(call => {
 
-                    const key = call.otherUser + call.time
+                    // const key = call.otherUser + call.time
+                    const key = call._id
 
                     if (seen.has(key)) return
                     seen.add(key)
