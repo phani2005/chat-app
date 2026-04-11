@@ -1403,6 +1403,15 @@ io.on("connection", (socket) => {
             if (call.users.length === 0) {
 
                 // 🔥 Save call records for each group member
+                // 🔥 notify all group members
+                group.members.forEach(member => {
+                    const sockets = onlineUsers[member]
+                    if (sockets) {
+                        sockets.forEach(id => {
+                            io.to(id).emit("new-call-log")
+                        })
+                    }
+                })
                 for (let member of group.members) {
                     // const didConnect = connectedUsers.includes(member)
                     // const callStart = call?.startTime || Date.now()
