@@ -27,10 +27,15 @@
             <div class="menu">
                 ⋮
                 <div class="dropdown">
-                    <p onclick="clearCalls()">Delete All</p>
+                    <p onclick="enableSelectMode()">Select</p>
                 </div>
             </div>
 
+        </div>
+        <div id="selectBar" style="display:none;" class="select-bar">
+            <button onclick="deleteSelectedCalls()" class="danger-btn">Delete</button>
+            <button onclick="clearCalls()" class="danger-btn">Delete All</button>
+            <button onclick="cancelSelect()" class="cancel-btn">Cancel</button>
         </div>
 
         <div id="callList"></div>
@@ -40,9 +45,11 @@
     <script>
         const socket = io()
         const user = localStorage.getItem("loggedUser")
+        let selectMode = false
+        let selectedCalls = new Set()
         // socket.emit("register-user", user)
         socket.on("connect", () => {
-            console.log("connected register user: ",user)
+            console.log("connected register user: ", user)
             socket.emit("register-user", user)
         })
         window.addEventListener("focus", () => {
@@ -71,54 +78,6 @@
             const container = document.getElementById("callList")
 
             container.innerHTML = ""
-
-            //             calls.forEach(call => {
-
-            //                 const div = document.createElement("div")
-
-            //                 div.className = "contact"
-            //                 const isOutgoing = call.caller === user
-            //                 const iconColor = call.missed ? "red" : "white"
-            //                 div.innerHTML = `
-
-            // ${call.profileimage ?
-            //                         `<img src="${call.profileimage}">`
-            //                         :
-            //                         `<img src="/profilephotodefault.png">`
-            //                     }
-
-            // <div class="contact-info">
-
-            // <strong>${call.name}</strong>
-
-            // <div class="timestamp">
-
-            // ${call.type === "voice"
-            //     ? `<i class="fa-solid fa-phone" style="color:${iconColor}"></i>`
-            //     : `<i class="fa-solid fa-video" style="color:${iconColor}"></i>`}
-
-            // ${call.missed
-            //     ? `<span style="color:red;">Missed</span>`
-            //     : call.direction === "outgoing"
-            //         ? "Outgoing"
-            //         : "Incoming"}
-            // • ${formatDuration(call.duration)}
-
-            // <br>
-
-            // <span style="font-size:12px;color:gray;">
-            // ${new Date(call.time).toLocaleString()}
-            // </span>
-
-            // </div>
-
-            // </div>
-
-            // `
-
-            //                 container.appendChild(div)
-
-            //             })
             const seen = new Set()
             calls
                 .sort((a, b) => new Date(b.time) - new Date(a.time)) // latest first
@@ -132,6 +91,7 @@
 
                     const div = document.createElement("div")
                     div.className = "contact"
+                    div.setAttribute("data-id", call._id)
 
                     const iconColor = call.missed ? "red" : "white"
 
@@ -178,6 +138,20 @@ ${new Date(call.time).toLocaleString()}
 
 </div>
 `
+                    if (selectMode) {
+                        const checkbox = document.createElement("input")
+                        checkbox.type = "checkbox"
+                        checkbox.className = "call-checkbox"
+
+                        checkbox.addEventListener("change", () => {
+                            if (checkbox.checked)
+                                selectedCalls.add(call._id)
+                            else
+                                selectedCalls.delete(call._id)
+                        })
+
+                        div.prepend(checkbox)
+                    }
 
                     container.appendChild(div)
                 })
@@ -192,6 +166,41 @@ ${new Date(call.time).toLocaleString()}
 
             return m + ":" + String(s).padStart(2, "0")
 
+        }
+        function enableSelectMode() {
+            selectMode = true
+            selectedCalls.clear()
+
+            document.getElementById("selectBar").style.display = "block"
+
+            loadCalls() // 🔥 re-render with checkboxes
+        }
+        function cancelSelect() {
+            selectMode = false
+            selectedCalls.clear()
+
+            document.getElementById("selectBar").style.display = "none"
+
+            loadCalls()
+        }
+        async function deleteSelectedCalls() {
+
+            if (selectedCalls.size === 0) {
+                return alert("No calls selected")
+            }
+
+            await fetch("/delete-calls", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    callIds: Array.from(selectedCalls),
+                    userEmail: user
+                })
+            })
+
+            cancelSelect()
         }
 
         loadCalls()
