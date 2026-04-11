@@ -48,6 +48,7 @@ self.addEventListener("fetch", event => {
         url.includes("/upload-message") ||
         url.includes("/subscribe") ||
         url.includes("/delete") ||
+        url.includes("/calls") || 
         event.request.method !== "GET"
     ) {
         return; // always fresh data
