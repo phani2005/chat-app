@@ -1416,14 +1416,14 @@ io.on("connection", (socket) => {
 
                 // 🔥 Save call records for each group member
                 // 🔥 notify all group members
-                group.members.forEach(member => {
-                    const sockets = onlineUsers[member]
-                    if (sockets) {
-                        sockets.forEach(id => {
-                            io.to(id).emit("new-call-log")
-                        })
-                    }
-                })
+                // group.members.forEach(member => {
+                //     const sockets = onlineUsers[member]
+                //     if (sockets) {
+                //         sockets.forEach(id => {
+                //             io.to(id).emit("new-call-log")
+                //         })
+                //     }
+                // })
                 for (let member of group.members) {
                     // const didConnect = connectedUsers.includes(member)
                     // const callStart = call?.startTime || Date.now()
@@ -1444,6 +1444,7 @@ io.on("connection", (socket) => {
                         timestamp: new Date()
                     })
                 }
+                notifyCallHistoryUpdate(group.members)
 
                 for (let member of group.members) {
 
@@ -1547,17 +1548,17 @@ io.on("connection", (socket) => {
             timestamp: new Date()
         })
         // 🔥 notify both users
-        const usersToNotify = [originalCaller, originalReceiver]
+        // const usersToNotify = [originalCaller, originalReceiver]
         notifyCallHistoryUpdate([originalCaller, originalReceiver])
 
-        usersToNotify.forEach(u => {
-            const sockets = onlineUsers[u]
-            if (sockets) {
-                sockets.forEach(id => {
-                    io.to(id).emit("new-call-log")
-                })
-            }
-        })
+        // usersToNotify.forEach(u => {
+        //     const sockets = onlineUsers[u]
+        //     if (sockets) {
+        //         sockets.forEach(id => {
+        //             io.to(id).emit("new-call-log")
+        //         })
+        //     }
+        // })
     })
     socket.on("call-timeout", async ({ from, to, type, isGroup }) => {
         console.log("⏱️ Call timeout:", from, "→", to)
@@ -1652,6 +1653,7 @@ io.on("connection", (socket) => {
             missed: true,
             timestamp: new Date()
         })
+        notifyCallHistoryUpdate([from, to])
 
     })
     socket.on("missed-call", async ({ to, from, type }) => {
