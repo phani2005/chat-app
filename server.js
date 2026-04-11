@@ -54,6 +54,16 @@ try {
     console.log("MONGO ERROR:", err)
 }
 const onlineUsers = {}//online users object
+function notifyCallHistoryUpdate(usersToNotify) {
+    usersToNotify.forEach(u => {
+        const sockets = onlineUsers[u]
+        if (sockets) {
+            sockets.forEach(id => {
+                io.to(id).emit("new-call-log")
+            })
+        }
+    })
+}
 const userschema = new mongoose.Schema({
     username: String,
     email: String,
@@ -1389,6 +1399,8 @@ io.on("connection", (socket) => {
                     })
                 }
 
+                notifyCallHistoryUpdate(group.members)
+
                 delete activeCalls[groupId]
                 return
             }
@@ -1536,6 +1548,7 @@ io.on("connection", (socket) => {
         })
         // 🔥 notify both users
         const usersToNotify = [originalCaller, originalReceiver]
+        notifyCallHistoryUpdate([originalCaller, originalReceiver])
 
         usersToNotify.forEach(u => {
             const sockets = onlineUsers[u]
@@ -1593,6 +1606,8 @@ io.on("connection", (socket) => {
                     timestamp: new Date()
                 })
             }
+
+            notifyCallHistoryUpdate(group.members)
 
             return
         }
@@ -1665,6 +1680,7 @@ io.on("connection", (socket) => {
             missed: true,
             timestamp: new Date()
         })
+        notifyCallHistoryUpdate([from, to])
 
     })
     socket.on("call-rejected", async ({ to, from, type }) => {
@@ -1717,6 +1733,7 @@ io.on("connection", (socket) => {
                 io.to(id).emit("call-rejected", { from })
             })
         }
+        notifyCallHistoryUpdate([from, to])
 
     })
     //active sockets
