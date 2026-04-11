@@ -40,7 +40,10 @@
     <script>
         const socket = io()
         const user = localStorage.getItem("loggedUser")
-        socket.emit("register-user", user)
+        // socket.emit("register-user", user)
+        socket.on("connect", () => {
+            socket.emit("register-user", user)
+        })
 
         // 🔥 listen for new call log
         socket.on("new-call-log", () => {
@@ -116,7 +119,8 @@
                 .sort((a, b) => new Date(b.time) - new Date(a.time)) // latest first
                 .forEach(call => {
 
-                    const key = call.otherUser + call.time
+                    // const key = call.otherUser + call.time
+                    const key = call._id
 
                     if (seen.has(key)) return
                     seen.add(key)
