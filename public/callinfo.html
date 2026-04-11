@@ -202,6 +202,24 @@ ${new Date(call.time).toLocaleString()}
 
             cancelSelect()
         }
+        async function clearCalls() {
+
+            const confirmDelete = confirm("Delete all call history?")
+
+            if (!confirmDelete) return
+
+            await fetch("/clear-calls", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    userEmail: user
+                })
+            })
+
+            cancelSelect()   // exit select mode
+        }
 
         loadCalls()
 
