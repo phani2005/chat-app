@@ -1,6 +1,6 @@
 {
-  "name": "RealTime Chat & Call App",
-  "short_name": "ChatApp",
+  "name": "Echo: A Real-Time Video and Messaging Application with Adaptive Communication Optimization",
+  "short_name": "Echo",
   "start_url": "/login.html",
   "scope": "/",
   "display": "standalone",
