@@ -20,11 +20,15 @@
             <input type="email" id="email" readonly>
             <input type="text" id="newname" placeholder="New Name" required>
             <button type="submit">Save</button>
+            <button onclick="goBack()">Back</button>
         </form>
     </div>
 
     <script>
         const email = localStorage.getItem("pendingContactEmail")
+        function goBack() {
+    window.location.href = "/main.html"
+}
 
         document.getElementById("email").value = email
 
