@@ -1,4 +1,4 @@
-const CACHE_NAME = "chat-app-v11";
+const CACHE_NAME = "chat-app-v12";
 
 const urlsToCache = [
   "/login.html",
