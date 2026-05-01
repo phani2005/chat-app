@@ -29,12 +29,16 @@
             <input type="file" id="groupDp" name="photo">
 
             <button type="submit">Create Group</button>
+            <button onclick="goBack()">Back</button>
         </form>
     </div>
 
     <script>
         document.getElementById("groupForm").addEventListener("submit", async (e) => {
             e.preventDefault()
+            function goBack() {
+    window.location.href = "/main.html"
+}
 
             const formData = new FormData()
 
