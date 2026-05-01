@@ -18,12 +18,16 @@
             <input type="text" id="name" placeholder="Contact Name" required>
             <input type="email" id="email" placeholder="Contact Email" required>
             <button type="submit">Add</button>
+            <button onclick="goBack()">Back</button>
         </form>
 
     </div>
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const loggedUser=localStorage.getItem("loggedUser")
+        function goBack() {
+    window.location.href = "/main.html"
+}
 
         // ✅ HANDLE AUTO EMAIL (ONLY FROM CHAT PAGE)
         const pendingEmail = localStorage.getItem("pendingContactEmail")
