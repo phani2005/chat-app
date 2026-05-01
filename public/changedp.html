@@ -16,10 +16,14 @@
     <input type="hidden" name="email" id="email">
     <input type="file" name="photo" required>
     <button type="submit">Update</button>
+    <button onclick="goBack()">Back</button>
 </form>
 </div>
 
 <script>
+function goBack() {
+    window.location.href = "/main.html"
+}
 document.getElementById("email").value =
     localStorage.getItem("loggedUser")
 </script>
