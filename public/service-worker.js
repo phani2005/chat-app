@@ -4,6 +4,7 @@ const urlsToCache = [
   "/login.html",
   "/main.html",
   "/chat.html",
+  "/addgroup.html",
   "/style.css",
   "/main.css",
   "/chat.css",
